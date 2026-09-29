@@ -1,0 +1,1723 @@
+<!DOCTYPE html>
+<html lang="en-CA">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#05080f" />
+<title>Central Alberta Snow Radar — Sonar Console · v5</title>
+<script>document.documentElement.className += ' js';</script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<!-- Non-blocking web font: if Google Fonts is slow/blocked the page still renders with system fonts -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'" />
+<style>
+  :root {
+    --bg: #05080f;
+    --bg2: #0a111d;
+    --glass: rgba(10, 18, 32, 0.66);
+    --glass-strong: rgba(8, 14, 26, 0.86);
+    --line: rgba(20, 224, 192, 0.16);
+    --line-strong: rgba(20, 224, 192, 0.38);
+    --text: #e6f1ff;
+    --muted: #7f93ad;
+    --dim: #4d5f78;
+    --cyan: #19d3c5;
+    --teal: #14e0c0;
+    --glow: 0 0 0 1px rgba(20, 224, 192, 0.55), 0 0 18px rgba(25, 211, 197, 0.35);
+    --amber: #fbbf24;
+    --red: #f87171;
+    --snowc: #c7d2fe;
+    --radius: 14px;
+    --font: 'Space Grotesk', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --mono: ui-monospace, 'SF Mono', 'Cascadia Mono', 'Roboto Mono', Menlo, Consolas, monospace;
+    --ease: cubic-bezier(.2, .8, .2, 1);
+    --sweep-period: 3.6s; /* one sonar rotation; the ping fires on each iteration */
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  button { font-family: inherit; }
+
+  /* ---------- "Scripts not running" notice (hidden as soon as JS runs) ---------- */
+  .nojs {
+    position: fixed; inset: auto 12px 12px 12px; z-index: 5000;
+    padding: 0.9rem 1rem; border-radius: 12px;
+    background: #2a1a08; border: 1px solid var(--amber); color: #fde68a;
+    font-size: 0.9rem; line-height: 1.45; box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+  }
+  .nojs strong { color: #fff; }
+  .js .nojs { display: none; }
+
+  /* ---------- Header ---------- */
+  .hdr {
+    flex: 0 0 auto;
+    position: relative;
+    z-index: 1100;
+    display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+    padding: 0.55rem 1rem;
+    padding-top: calc(0.55rem + env(safe-area-inset-top));
+    background: linear-gradient(180deg, rgba(10, 17, 29, 0.98), rgba(6, 10, 18, 0.96));
+    border-bottom: 1px solid var(--line);
+  }
+  .brand { display: flex; align-items: center; gap: 0.7rem; min-width: 0; }
+  .brand > div { min-width: 0; }
+  .scope {
+    position: relative; flex: 0 0 auto;
+    width: 38px; height: 38px; border-radius: 50%;
+    border: 1px solid var(--line-strong);
+    background:
+      radial-gradient(circle, transparent 38%, rgba(20,224,192,0.18) 39%, transparent 41%),
+      radial-gradient(circle, transparent 68%, rgba(20,224,192,0.18) 69%, transparent 71%),
+      radial-gradient(circle at center, #0b1a24, #05080f 70%);
+    box-shadow: 0 0 14px rgba(25, 211, 197, 0.25), inset 0 0 10px rgba(25, 211, 197, 0.15);
+    overflow: hidden;
+  }
+  .scope::before {
+    content: ''; position: absolute; inset: 0; border-radius: 50%;
+    background: conic-gradient(from 0deg, rgba(20,224,192,0.55), rgba(20,224,192,0) 70deg, transparent 360deg);
+    animation: sweep var(--sweep-period) linear infinite;
+  }
+  .scope::after {
+    content: ''; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px;
+    border-radius: 50%; background: var(--teal); box-shadow: 0 0 6px var(--teal);
+  }
+  @keyframes sweep { to { transform: rotate(360deg); } }
+  /* Sonar ping rings (icon + map) */
+  .scope-ring {
+    position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+    border: 1.5px solid var(--teal); box-shadow: 0 0 8px rgba(20,224,192,0.8);
+    opacity: 0; transform: scale(0.1);
+  }
+  .scope-ring.go { animation: scopeping 1.3s cubic-bezier(.15,.7,.3,1) forwards; }
+  @keyframes scopeping { 0% { transform: scale(0.1); opacity: 1; } 100% { transform: scale(1.05); opacity: 0; } }
+  .sonar-ring {
+    position: absolute; left: 50%; top: 50%; z-index: 640; pointer-events: none;
+    width: min(78vmin, 620px); aspect-ratio: 1 / 1; border-radius: 50%;
+    border: 2px solid rgba(20, 224, 192, 0.75);
+    box-shadow: 0 0 22px rgba(20, 224, 192, 0.45), inset 0 0 26px rgba(20, 224, 192, 0.22);
+    opacity: 0; transform: translate(-50%, -50%) scale(0.02);
+  }
+  .sonar-ring.go { animation: sonarping 2.6s cubic-bezier(.12,.62,.3,1) forwards; }
+  @keyframes sonarping {
+    0% { transform: translate(-50%, -50%) scale(0.02); opacity: 0.9; }
+    65% { opacity: 0.28; }
+    100% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
+  }
+  /* Sound toggle + first-tap hint */
+  .sound-btn {
+    width: 44px; height: 44px; flex: 0 0 auto; padding: 0; border-radius: 12px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid var(--line); background: rgba(5, 10, 18, 0.7); color: var(--muted);
+    cursor: pointer; touch-action: manipulation;
+    transition: color .25s var(--ease), border-color .25s var(--ease), box-shadow .25s var(--ease), background .25s var(--ease);
+  }
+  .sound-btn:hover { color: var(--text); border-color: var(--line-strong); }
+  .sound-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--cyan); }
+  .sound-btn svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .sound-btn .spk { fill: currentColor; stroke: none; }
+  .sound-btn[aria-pressed="true"] { color: var(--teal); border-color: rgba(20, 224, 192, 0.6); box-shadow: var(--glow); background: rgba(20, 224, 192, 0.10); }
+  .sound-btn[aria-pressed="true"] .mute { display: none; }
+  .sound-btn[aria-pressed="false"] .wave { display: none; }
+  .sound-btn:disabled { opacity: 0.4; cursor: default; box-shadow: none; }
+  .sonar-hint {
+    /* sits to the left of the speaker button (over the clock), never over the town buttons below */
+    position: absolute; top: 50%; right: 54px; transform: translateY(-50%); z-index: 1200; white-space: nowrap;
+    padding: 0.4rem 0.7rem; border-radius: 999px; pointer-events: none;
+    font: 600 0.7rem/1 var(--mono); letter-spacing: 0.08em; color: #e9fffb;
+    background: rgba(8, 20, 26, 0.92); border: 1px solid rgba(20, 224, 192, 0.5);
+    box-shadow: 0 0 14px rgba(20, 224, 192, 0.25);
+    animation: fadein .4s var(--ease) both;
+  }
+  .sonar-hint[hidden] { display: none; }
+  .sonar-hint::before {
+    content: ''; position: absolute; top: 50%; right: -5px; width: 8px; height: 8px; transform: translateY(-50%) rotate(45deg);
+    background: rgba(8, 20, 26, 0.92); border-right: 1px solid rgba(20, 224, 192, 0.5); border-top: 1px solid rgba(20, 224, 192, 0.5);
+  }
+  .title-row { display: flex; align-items: center; gap: 0.45rem; min-width: 0; }
+  .ver { flex: 0 0 auto; font: 600 0.6rem/1 var(--mono); letter-spacing: 0.06em; color: var(--teal); padding: 0.18rem 0.32rem;
+    border: 1px solid rgba(20, 224, 192, 0.45); border-radius: 5px; background: rgba(20, 224, 192, 0.08); box-shadow: 0 0 8px rgba(20, 224, 192, 0.18); }
+  .brand h1 {
+    min-width: 0;
+    margin: 0; font-size: 1.05rem; font-weight: 600; letter-spacing: 0.01em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .brand .sub {
+    margin: 0.05rem 0 0; font-size: 0.72rem; color: var(--muted); letter-spacing: 0.12em; text-transform: uppercase;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .hdr-right { position: relative; flex: 0 0 auto; display: flex; align-items: center; gap: 0.9rem; }
+  .feed {
+    display: inline-flex; align-items: center; gap: 0.45rem;
+    font: 600 0.7rem/1 var(--mono); letter-spacing: 0.14em; text-transform: uppercase;
+    padding: 0.45rem 0.65rem; border-radius: 999px;
+    border: 1px solid var(--line); background: rgba(5, 10, 18, 0.7); color: var(--muted);
+    transition: color .3s var(--ease), border-color .3s var(--ease), box-shadow .3s var(--ease);
+  }
+  .feed .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); transition: background .3s, box-shadow .3s; }
+  .feed[data-state="ok"] { color: var(--teal); border-color: rgba(20,224,192,0.45); box-shadow: 0 0 14px rgba(20,224,192,0.18); }
+  .feed[data-state="ok"] .dot { background: var(--teal); box-shadow: 0 0 8px var(--teal); animation: pulse 2s ease-in-out infinite; }
+  .feed[data-state="loading"] { color: var(--amber); border-color: rgba(251,191,36,0.4); }
+  .feed[data-state="loading"] .dot { background: var(--amber); animation: pulse 0.9s ease-in-out infinite; }
+  .feed[data-state="warn"] { color: var(--amber); border-color: rgba(251,191,36,0.5); }
+  .feed[data-state="warn"] .dot { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+  .feed[data-state="error"] { color: var(--red); border-color: rgba(248,113,113,0.55); box-shadow: 0 0 14px rgba(248,113,113,0.2); }
+  .feed[data-state="error"] .dot { background: var(--red); box-shadow: 0 0 8px var(--red); }
+  @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.45; transform: scale(0.8); } }
+  .clock { text-align: right; line-height: 1.1; }
+  .clock .time { font: 600 1.25rem/1 var(--mono); letter-spacing: 0.04em; color: var(--text); text-shadow: 0 0 12px rgba(25,211,197,0.35); font-variant-numeric: tabular-nums; }
+  .clock .date { font: 500 0.68rem/1.2 var(--mono); color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; margin-top: 0.2rem; }
+
+  /* ---------- Town navigation ---------- */
+  .townnav {
+    flex: 0 0 auto; position: relative; z-index: 1090;
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px;
+    padding: 0.45rem 1rem;
+    background: rgba(6, 11, 20, 0.97);
+    border-bottom: 1px solid var(--line);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+  }
+  .townnav a {
+    display: flex; align-items: center; justify-content: center; gap: 0.4rem;
+    min-height: 46px; padding: 0.35rem 0.5rem; border-radius: 11px;
+    border: 1px solid var(--line); background: rgba(3, 7, 14, 0.6);
+    color: var(--muted); text-decoration: none; font-weight: 600; font-size: 0.95rem; letter-spacing: 0.01em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    touch-action: manipulation;
+    transition: color .25s var(--ease), background .25s var(--ease), box-shadow .25s var(--ease), border-color .25s var(--ease);
+  }
+  .townnav a:hover { color: var(--text); border-color: var(--line-strong); }
+  .townnav a:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--cyan); }
+  .townnav a.active {
+    color: #e9fffb; border-color: rgba(20, 224, 192, 0.65);
+    background: linear-gradient(180deg, rgba(20,224,192,0.28), rgba(25,211,197,0.10));
+    box-shadow: var(--glow); text-shadow: 0 0 8px rgba(20,224,192,0.6);
+  }
+  .townnav .pin { width: 7px; height: 7px; border-radius: 50%; background: currentColor; opacity: 0.7; flex: 0 0 auto; }
+  .townnav a.active .pin { background: var(--teal); box-shadow: 0 0 8px var(--teal); opacity: 1; }
+
+  /* ---------- Stage (map + overlays) ---------- */
+  .stage { position: relative; flex: 1 1 auto; min-height: 0; }
+  #radarMap { position: absolute; inset: 0; background: var(--bg2); }
+  .map-msg {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    padding: 2rem; text-align: center; color: var(--muted); font: 500 0.9rem/1.5 var(--mono); z-index: 1;
+  }
+  .stage::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 450;
+    background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.45) 100%);
+  }
+
+  .side { display: contents; } /* panels behave as direct children of .stage unless a layout below says otherwise */
+  .panel {
+    position: absolute; z-index: 1000;
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    backdrop-filter: blur(14px) saturate(140%);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255,255,255,0.04);
+    animation: rise .5s var(--ease) both;
+  }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  .panel-title {
+    display: flex; align-items: center; gap: 0.5rem;
+    font: 600 0.66rem/1 var(--mono); letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted);
+    margin: 0 0 0.55rem;
+  }
+  .panel-title::before { content: ''; width: 14px; height: 2px; background: var(--teal); box-shadow: 0 0 6px var(--teal); border-radius: 2px; }
+  .badge {
+    margin-left: auto; font: 700 0.6rem/1 var(--mono); letter-spacing: 0.14em; padding: 0.28rem 0.45rem; border-radius: 6px;
+  }
+  .badge.live { color: #041b17; background: var(--teal); box-shadow: 0 0 10px rgba(20,224,192,0.5); }
+  .badge.fcst { color: #1f1405; background: var(--amber); }
+
+  .ctrl { top: 14px; left: 14px; width: 340px; padding: 0.9rem; }
+  .ctrl .group + .group { margin-top: 0.85rem; padding-top: 0.85rem; border-top: 1px dashed var(--line); }
+
+  .seg {
+    display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px;
+    padding: 4px; border-radius: 12px; background: rgba(3, 7, 14, 0.6); border: 1px solid var(--line);
+  }
+  .btn {
+    min-height: 44px; min-width: 44px;
+    padding: 0.5rem 0.75rem;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--muted);
+    font-weight: 600; font-size: 0.88rem; letter-spacing: 0.02em;
+    cursor: pointer; touch-action: manipulation;
+    transition: color .25s var(--ease), background .25s var(--ease), box-shadow .25s var(--ease), border-color .25s var(--ease), transform .12s var(--ease);
+  }
+  .btn:hover { color: var(--text); background: rgba(20, 224, 192, 0.07); }
+  .btn:active { transform: scale(0.97); }
+  .btn:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--cyan); }
+  .btn.active {
+    color: #e9fffb;
+    background: linear-gradient(180deg, rgba(20,224,192,0.28), rgba(25,211,197,0.12));
+    border-color: rgba(20, 224, 192, 0.6);
+    box-shadow: var(--glow);
+    text-shadow: 0 0 8px rgba(20,224,192,0.6);
+  }
+  .btn.solo { border-color: var(--line); background: rgba(3, 7, 14, 0.6); }
+  .btn.solo:hover { border-color: var(--line-strong); }
+  .btn:disabled { opacity: 0.35; cursor: default; transform: none; }
+  .row { display: flex; gap: 0.5rem; align-items: stretch; }
+  .row .seg { flex: 1; }
+
+  .radar-sub { display: none; }
+  .radar-sub.visible { display: block; animation: fadein .35s var(--ease) both; }
+  @keyframes fadein { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+
+  .ts-card {
+    margin-top: 0.6rem; padding: 0.6rem 0.7rem; border-radius: 10px;
+    background: rgba(3, 7, 14, 0.55); border: 1px solid var(--line);
+  }
+  .ts-label { font: 600 0.62rem/1 var(--mono); letter-spacing: 0.16em; text-transform: uppercase; color: var(--dim); }
+  .radar-ts { display: block; margin-top: 0.3rem; font: 600 0.95rem/1.25 var(--mono); color: var(--text); font-variant-numeric: tabular-nums; }
+  .ts-age { font: 500 0.72rem/1.3 var(--mono); color: var(--muted); margin-top: 0.2rem; }
+
+  .transport { display: grid; grid-template-columns: 1fr 1.4fr 1fr; gap: 6px; }
+  .ticks { display: flex; gap: 3px; margin-top: 0.6rem; height: 16px; align-items: flex-end; }
+  .tick {
+    flex: 1; height: 8px; border-radius: 2px; border: 0; padding: 0;
+    background: rgba(20, 224, 192, 0.18); cursor: pointer;
+    transition: height .2s var(--ease), background .2s var(--ease), box-shadow .2s var(--ease);
+  }
+  .tick:hover { background: rgba(20, 224, 192, 0.4); }
+  .tick.on { height: 16px; background: var(--teal); box-shadow: 0 0 10px rgba(20,224,192,0.8); }
+
+  /* Status readout */
+  .readout { left: 14px; bottom: 14px; width: 340px; padding: 0.8rem 0.9rem; }
+  .readout dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 0.3rem 0.8rem; }
+  .readout dt { font: 600 0.62rem/1.6 var(--mono); letter-spacing: 0.16em; text-transform: uppercase; color: var(--dim); }
+  .readout dd { margin: 0; font: 500 0.76rem/1.6 var(--mono); color: var(--text); text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .readout dd.bad { color: var(--red); }
+  .status {
+    margin: 0.6rem 0 0; padding: 0.5rem 0.6rem; border-radius: 8px;
+    font: 500 0.74rem/1.4 var(--mono); color: var(--muted);
+    background: rgba(3, 7, 14, 0.55); border-left: 2px solid var(--teal);
+    transition: color .3s, border-color .3s, background .3s;
+  }
+  .status.error { color: #fecaca; border-left-color: var(--red); background: rgba(60, 10, 14, 0.5); }
+  .status.warn { color: #fde68a; border-left-color: var(--amber); }
+  .status.loading { border-left-color: var(--amber); }
+  .attrib { margin: 0.55rem 0 0; font-size: 0.66rem; line-height: 1.45; color: var(--dim); }
+  .attrib a { color: var(--cyan); text-decoration: none; }
+  .attrib a:hover { text-decoration: underline; }
+  .attr-short { display: none; }
+
+  /* Town snowfall forecast (Open-Meteo) */
+  .snowcard { right: 14px; bottom: 62px; width: 350px; padding: 0.8rem 0.9rem; }
+  .snowgrid { display: grid; grid-template-columns: 1fr auto auto; gap: 0.25rem 0.8rem; align-items: baseline; }
+  .snowgrid .h { font: 600 0.6rem/1.4 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); text-align: right; }
+  .snowgrid .h:first-child { text-align: left; }
+  .snowgrid .t { font-weight: 600; font-size: 0.85rem; color: var(--muted); padding: 0.1rem 0; }
+  .snowgrid .v { font: 600 0.85rem/1.4 var(--mono); text-align: right; color: var(--text); font-variant-numeric: tabular-nums; }
+  .snowgrid .on { color: var(--teal); text-shadow: 0 0 8px rgba(20,224,192,0.5); }
+  /* Selected-town conditions: glowing digital readouts */
+  .wx { margin-bottom: 0.7rem; padding-bottom: 0.65rem; border-bottom: 1px dashed var(--line); }
+  .badge.model { color: var(--muted); border: 1px solid var(--line-strong); background: transparent; font-size: 0.52rem; letter-spacing: 0.06em; padding: 0.24rem 0.35rem; }
+  .wx .panel-title { white-space: nowrap; letter-spacing: 0.07em; gap: 0.35rem; }
+  .wx .panel-title #wxTown { color: var(--text); flex: 0 0 auto; }
+  .wx .panel-title .now { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .wx .panel-title .now { color: var(--dim); }
+  /* primary row: TEMP + HUMIDITY, large */
+  .wxmain { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .wxbig { display: flex; flex-direction: column; padding: 0.45rem 0.6rem 0.4rem; border-radius: 10px; min-width: 0;
+    background: rgba(3, 10, 18, 0.6); border: 1px solid rgba(20, 224, 192, 0.32); box-shadow: inset 0 0 18px rgba(20, 224, 192, 0.06); }
+  .wxbig .k, .wxt .k { font: 600 0.7rem/1.3 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+  .wxbig .d { margin-top: 0.1rem; white-space: nowrap; }
+  .wxbig b { font: 600 1.85rem/1.1 var(--mono); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; color: var(--teal);
+    text-shadow: 0 0 8px rgba(20,224,192,0.7), 0 0 22px rgba(20,224,192,0.3); transition: color .3s var(--ease), text-shadow .3s var(--ease); }
+  .wxbig i { font: 500 0.85rem/1 var(--mono); font-style: normal; color: var(--muted); margin-left: 2px; }
+  .wxbig .sub { font: 500 0.7rem/1.3 var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* secondary row: modelled snow fallen */
+  .wxsnow { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 6px; }
+  .wxt { display: flex; flex-direction: column; padding: 0.32rem 0.5rem 0.3rem; border-radius: 8px; min-width: 0;
+    background: rgba(3, 10, 18, 0.5); border: 1px solid var(--line); }
+  .wxt .k { font-size: 0.64rem; letter-spacing: 0.06em; }
+  .wxt .d { margin-top: 0.1rem; white-space: nowrap; }
+  .wxt b { font: 600 1.05rem/1.15 var(--mono); font-variant-numeric: tabular-nums; color: var(--teal);
+    text-shadow: 0 0 6px rgba(20,224,192,0.6), 0 0 14px rgba(20,224,192,0.25); }
+  .wxt i { font: 500 0.62rem/1 var(--mono); font-style: normal; color: var(--muted); margin-left: 2px; }
+  .wxmain.na b, .wxsnow.na b { color: var(--dim); text-shadow: none; }
+  .wxmain.stale b, .wxsnow.stale b { color: #8fbfb6; text-shadow: none; }
+  .wxnote { margin: 0.45rem 0 0; font: 500 0.62rem/1.45 var(--mono); color: var(--dim); }
+  .wxnote.error { color: var(--amber); }
+  .snownote { margin: 0.45rem 0 0; font: 500 0.66rem/1.4 var(--mono); color: var(--dim); }
+  .snownote.error { color: var(--red); }
+
+  /* Legend control */
+  .legend-ctl { background: var(--glass-strong); border: 1px solid var(--line); border-radius: 12px; color: var(--text); box-shadow: 0 8px 24px rgba(0,0,0,0.45); }
+  .legend-ctl summary {
+    list-style: none; cursor: pointer; min-height: 44px; display: flex; align-items: center; justify-content: center;
+    padding: 0 0.8rem; font: 600 0.7rem/1 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted);
+  }
+  .legend-ctl summary::-webkit-details-marker { display: none; }
+  .legend-ctl[open] summary { color: var(--teal); }
+  .legend-ctl .lg-body { padding: 0 0.6rem 0.6rem; }
+  .legend-ctl img { display: block; max-height: 46vh; width: auto; background: #f1f5f9; border-radius: 8px; padding: 4px; }
+  .legend-ctl .lg-cap { font: 500 0.66rem/1.35 var(--mono); color: var(--muted); max-width: 150px; margin-top: 0.4rem; }
+
+  /* ---------- Leaflet skin ---------- */
+  .leaflet-container { font: inherit; background: var(--bg2); }
+  .leaflet-control-attribution {
+    font-size: 10px !important;
+    background: rgba(5, 8, 15, 0.8) !important;
+    color: var(--muted) !important;
+    border-top-left-radius: 8px;
+  }
+  .leaflet-control-attribution a { color: var(--cyan) !important; }
+  .leaflet-bar { border: 1px solid var(--line) !important; border-radius: 12px !important; overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,0.45) !important; }
+  .leaflet-bar a {
+    width: 44px !important; height: 44px !important; line-height: 44px !important;
+    background: var(--glass-strong) !important; color: var(--text) !important;
+    border-bottom-color: var(--line) !important;
+    transition: background .2s, color .2s;
+  }
+  .leaflet-bar a:hover { background: rgba(20, 224, 192, 0.18) !important; color: #fff !important; }
+  .leaflet-control-scale-line {
+    background: rgba(5, 8, 15, 0.7) !important; color: var(--muted) !important;
+    border-color: var(--line-strong) !important; font-family: var(--mono);
+  }
+  .leaflet-tooltip.town-label {
+    background: rgba(5, 10, 18, 0.82); color: var(--text); border: 1px solid var(--line-strong);
+    border-radius: 6px; font: 600 11px/1.2 var(--font); letter-spacing: 0.03em; padding: 2px 6px;
+    box-shadow: 0 0 10px rgba(25,211,197,0.15);
+  }
+  .leaflet-tooltip.town-label.on { border-color: var(--teal); color: #e9fffb; box-shadow: 0 0 12px rgba(20,224,192,0.6); }
+  .leaflet-tooltip.town-label::before { display: none; }
+  .town-dot { filter: drop-shadow(0 0 4px rgba(25, 211, 197, 0.9)); }
+  .osm-dark { filter: invert(1) hue-rotate(180deg) brightness(0.82) contrast(0.92) saturate(0.35); }
+
+  /* ---------- Mobile: panels dock above/below the map ---------- */
+  @media (max-width: 720px) {
+    .hdr { padding-left: 0.75rem; padding-right: 0.75rem; gap: 0.5rem; }
+    .hdr-right { gap: 0.55rem; }
+    .brand { gap: 0.55rem; }
+    .scope { width: 32px; height: 32px; }
+    .brand h1 { font-size: 0.95rem; }
+    .h1-long { display: none; }
+    .brand .sub { display: none; }
+    .feed .label { display: none; }
+    .feed { padding: 0.45rem; }
+    .clock .time { font-size: 1.05rem; }
+    .townnav { padding: 0.4rem 0.5rem; gap: 4px; }
+    .townnav a { font-size: 0.84rem; padding: 0.3rem 0.25rem; gap: 0.3rem; min-height: 46px; }
+    .townnav .pin { display: none; }
+    .stage { display: flex; flex-direction: column; }
+    #radarMap { order: 1; position: relative; inset: auto; flex: 1 1 auto; min-height: 200px; }
+    .stage::after { display: none; }
+    .panel { position: relative; top: auto; left: auto; right: auto; bottom: auto; width: auto; border-radius: 0; border-left: 0; border-right: 0; animation: none; }
+    .ctrl { order: 0; padding: 0.55rem 0.75rem; background: var(--glass-strong); }
+    .ctrl .group + .group { margin-top: 0.5rem; padding-top: 0.5rem; }
+    .ctrl .panel-title.hide-m { display: none; }
+    .ctrl .panel-title { margin-bottom: 0.4rem; }
+    .ts-card { margin-top: 0.4rem; padding: 0.4rem 0.6rem; display: flex; justify-content: space-between; align-items: baseline; gap: 0.2rem 0.5rem; flex-wrap: wrap; }
+    .radar-ts { margin-top: 0; font-size: 0.84rem; }
+    .ts-age { margin-top: 0; width: 100%; }
+    .ticks { margin-top: 0.4rem; }
+    .snowcard { order: 2; padding: 0.45rem 0.75rem; background: var(--glass-strong); }
+    .snowcard .panel-title { margin-bottom: 0.3rem; }
+    .snowgrid { grid-template-columns: repeat(3, 1fr); gap: 0 0.5rem; }
+    .snowgrid .h { display: none; }
+    .snowgrid .cell { display: flex; flex-direction: column; }
+    .snowgrid .t { font-size: 0.74rem; }
+    .snowgrid .v { text-align: left; font-size: 0.78rem; }
+    .snownote { margin-top: 0.25rem; }
+    .snownote:not(.error) { display: none; }
+    .wx { margin-bottom: 0.35rem; padding-bottom: 0.35rem; }
+    .wx .panel-title { margin-bottom: 0.25rem; }
+    .wxbig { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 0.4rem; align-items: baseline; padding: 0.28rem 0.55rem 0.3rem; }
+    .wxbig .k { grid-column: 1; grid-row: 1; font-size: 0.66rem; }
+    .wxbig .sub { grid-column: 2; grid-row: 1; justify-self: end; font-size: 0.64rem; min-width: 0; max-width: 100%; }
+    .wxbig .d { grid-column: 1 / -1; grid-row: 2; margin: 0; }
+    .wxbig .fl { display: none; }
+    .wxbig b { font-size: 1.55rem; }
+    .wxbig i { font-size: 0.74rem; }
+    .wxsnow { margin-top: 5px; gap: 5px; }
+    .wxt { padding: 0.2rem 0.45rem 0.22rem; }
+    .wxt .k { font-size: 0.6rem; }
+    .wxt .d { margin: 0; }
+    .wxt b { font-size: 0.95rem; }
+    .wxnote { margin-top: 0.25rem; font-size: 0.6rem; }
+    .attr-full { display: none; }
+    .attr-short { display: block; }
+    .wxnote:not(.error) { display: none; }
+    .snowgrid .cell { display: grid; grid-template-columns: auto auto; justify-content: start; gap: 0 0.45rem; }
+    .snowgrid .cell .t { grid-column: 1 / -1; }
+    .snowgrid .v { font-size: 0.72rem; }
+    #baseAttrib { display: none; }
+    .ctrl .ts-card { margin-top: 0.35rem; }
+    .readout { order: 3; padding: 0.45rem 0.75rem calc(0.45rem + env(safe-area-inset-bottom)); background: var(--glass-strong); }
+    .readout .panel-title, .readout dl { display: none; }
+    .status { margin-top: 0; font-size: 0.7rem; }
+    .attrib { margin-top: 0.3rem; font-size: 0.6rem; }
+    .legend-ctl img { max-height: 30vh; }
+  }
+  @media (max-width: 440px) {
+    .clock .date { display: none; }
+    .brand { gap: 0.45rem; }
+    .scope { width: 28px; height: 28px; }
+    .title-row { gap: 0.3rem; }
+    .ver { font-size: 0.54rem; padding: 0.12rem 0.24rem; }
+    .clock .time { font-size: 0.95rem; }
+    .wxbig .k { letter-spacing: 0.06em; }
+    .hdr-right { gap: 0.4rem; }
+    .brand h1 { font-size: 0.88rem; }
+  }
+  @media (min-width: 721px) {
+    .snowgrid .cell { display: contents; }
+  }
+  @media (min-width: 721px) and (max-height: 760px) {
+    .snowcard .fcpart { display: none; }
+    .wx { margin-bottom: 0; padding-bottom: 0; border-bottom: 0; }
+  }
+  /* Short desktop screens: drop the detail rows so the readout never overlaps the control panel */
+  @media (min-width: 721px) and (max-height: 880px) {
+    .readout dl { display: none; }
+    .readout .panel-title { margin-bottom: 0.45rem; }
+  }
+  @media (min-width: 721px) and (max-height: 700px) {
+    .readout .panel-title { display: none; }
+    /* control panel ends ~445px down; keep the readout below it and let it scroll */
+    .readout { max-height: calc(100vh - 470px); min-height: 90px; overflow-y: auto; }
+  }
+
+  @media (max-width: 380px) {
+    .h1-mid { display: none; }   /* "Snow Radar v5" on the narrowest phones rather than an ellipsis */
+  }
+  /* Landscape phones and other short-but-wide screens: map on the left, panels in a scrolling column */
+  @media (min-width: 721px) and (max-height: 500px) {
+    .hdr { padding-top: 0.35rem; padding-bottom: 0.35rem; }
+    .brand .sub { display: none; }
+    .townnav { padding-top: 0.3rem; padding-bottom: 0.3rem; }
+    .townnav a { min-height: 44px; }
+    #radarMap { right: 366px; }
+    .stage::after { right: 366px; }
+    .side { display: flex; flex-direction: column; gap: 8px; position: absolute; top: 0; right: 0; bottom: 0; width: 366px;
+      overflow-y: auto; padding: 8px; background: var(--bg); z-index: 1000; -webkit-overflow-scrolling: touch; }
+    .side .panel { position: relative; inset: auto; width: auto; max-height: none; min-height: 0; overflow: visible; animation: none; flex: 0 0 auto; }
+    .side .snowcard { order: -1; }
+    .side .snowcard .fcpart { display: block; }
+    .side .wx { margin-bottom: 0.7rem; padding-bottom: 0.65rem; border-bottom: 1px dashed var(--line); }
+    .side .readout .panel-title { display: flex; }
+  }
+
+  /* ---------- Reduced motion ---------- */
+  @media (prefers-reduced-motion: reduce) {
+    .sonar-ring, .scope-ring { display: none !important; }
+    *, *::before, *::after {
+      animation: none !important;
+      transition: none !important;
+      scroll-behavior: auto !important;
+    }
+  }
+</style>
+</head>
+<body>
+<div class="nojs" role="alert">
+  <strong>This page's scripts are not running.</strong>
+  You are probably viewing it inside a preview (for example the Google Drive preview or phone app, an email
+  attachment viewer, or a Files/Quick Look preview), which shows HTML without running it, so the map and radar can't load.
+  Download the file and open it in Chrome, Safari, Edge or Firefox, or open it from a web link.
+</div>
+
+<header class="hdr">
+  <div class="brand">
+    <div class="scope" id="scope" aria-hidden="true"><span class="scope-ring" id="scopeRing"></span></div>
+    <div>
+      <div class="title-row"><h1><span class="h1-long">Central </span><span class="h1-mid">Alberta </span>Snow Radar</h1><span class="ver" title="Version 5">v5</span></div>
+      <p class="sub">Live radar + model snowfall forecast</p>
+    </div>
+  </div>
+  <div class="hdr-right">
+    <span class="feed" id="feedState" data-state="loading" title="Feed state">
+      <span class="dot" aria-hidden="true"></span><span class="label" id="feedLabel">Starting</span>
+    </span>
+    <div class="clock" aria-label="Local time">
+      <div class="time" id="clockTime">--:--:--</div>
+      <div class="date" id="clockDate">—</div>
+    </div>
+    <button type="button" class="sound-btn" id="soundBtn" aria-pressed="true" aria-label="Sonar sound" title="Sonar sound on/off">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path class="spk" d="M3.5 9.2h3.6L12 5v14l-4.9-4.2H3.5z"/>
+        <path class="wave" d="M15.5 9a4.2 4.2 0 0 1 0 6M18 6.5a7.8 7.8 0 0 1 0 11"/>
+        <path class="mute" d="M16 9.5l5 5M21 9.5l-5 5"/>
+      </svg>
+    </button>
+    <div class="sonar-hint" id="sonarHint" hidden>Tap for sonar sound</div>
+  </div>
+</header>
+
+<nav class="townnav" aria-label="Jump to town">
+  <a href="#region" data-place="region" class="active" aria-current="true"><span class="pin" aria-hidden="true"></span>Region</a>
+  <a href="#three-hills" data-place="three-hills"><span class="pin" aria-hidden="true"></span>Three Hills</a>
+  <a href="#drumheller" data-place="drumheller"><span class="pin" aria-hidden="true"></span>Drumheller</a>
+  <a href="#stettler" data-place="stettler"><span class="pin" aria-hidden="true"></span>Stettler</a>
+</nav>
+
+<div class="stage">
+  <div id="radarMap" aria-label="Snow radar map"><div class="map-msg" id="mapMsg">Loading map library…</div></div>
+
+  <div class="side">
+  <section class="panel ctrl" aria-label="Radar controls">
+    <div class="group">
+      <p class="panel-title hide-m">Source</p>
+      <div class="seg" role="group" aria-label="Data source">
+        <button type="button" class="btn active" id="srcLive" aria-pressed="true">Live radar</button>
+        <button type="button" class="btn" id="srcFcst" aria-pressed="false">Snow forecast</button>
+      </div>
+    </div>
+
+    <div class="group radar-sub visible" id="liveSub" role="group" aria-label="Live radar options">
+      <p class="panel-title">EC GeoMet radar <span class="badge live">LIVE</span></p>
+      <div class="row">
+        <div class="seg" role="group" aria-label="Precipitation type">
+          <button type="button" class="btn active" id="ecSnow" aria-pressed="true">Snow</button>
+          <button type="button" class="btn" id="ecRain" aria-pressed="false">Rain</button>
+        </div>
+        <button type="button" class="btn solo" id="ecRefresh" title="Re-check latest radar scan" aria-label="Refresh latest radar">&#x21bb;</button>
+      </div>
+      <div class="ts-card">
+        <span class="ts-label">Latest scan</span>
+        <span class="radar-ts" id="ecTimestamp">—</span>
+        <div class="ts-age" id="ecAge"></div>
+      </div>
+    </div>
+
+    <div class="group radar-sub" id="fcstSub" role="group" aria-label="Snowfall forecast playback">
+      <p class="panel-title">HRDPS 3-h snowfall <span class="badge fcst">FORECAST</span></p>
+      <div class="transport">
+        <button type="button" class="btn solo" id="fcPrev" aria-label="Previous forecast step" disabled>&#9664;</button>
+        <button type="button" class="btn solo" id="fcPlay" disabled>Play</button>
+        <button type="button" class="btn solo" id="fcNext" aria-label="Next forecast step" disabled>&#9654;</button>
+      </div>
+      <div class="ticks" id="fcTicks" aria-hidden="true"></div>
+      <div class="ts-card">
+        <span class="ts-label">3 h ending</span>
+        <span class="radar-ts" id="fcTimestamp">—</span>
+        <div class="ts-age" id="fcAge"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel snowcard" aria-label="Town conditions and snowfall">
+    <div class="wx" aria-live="polite">
+      <p class="panel-title"><span id="wxTown">Three Hills</span><span class="now" id="wxAt" title="Model time of the current conditions">· loading</span><span class="badge model">MODELLED · OPEN-METEO</span></p>
+      <div class="wxmain na" id="wxMain">
+        <div class="wxbig"><span class="k">Temp</span><span class="d"><b id="wxTemp">--</b><i>°C</i></span><span class="sub" id="wxFeels">feels <span class="fl">like </span>--</span></div>
+        <div class="wxbig"><span class="k">Humidity</span><span class="d"><b id="wxRh">--</b><i>%</i></span><span class="sub">relative</span></div>
+      </div>
+      <div class="wxsnow na" id="wxSnow">
+        <div class="wxt"><span class="k">Snow 24h</span><span class="d"><b id="wxS24">--</b><i>cm</i></span></div>
+        <div class="wxt"><span class="k">Snow 7d</span><span class="d"><b id="wxS7">--</b><i>cm</i></span></div>
+        <div class="wxt"><span class="k" id="wxSsK">Season</span><span class="d"><b id="wxSs">--</b><i>cm</i></span></div>
+      </div>
+      <p class="wxnote" id="wxNote">Loading current conditions from Open-Meteo…</p>
+    </div>
+    <div class="fcpart">
+      <p class="panel-title">Town snowfall (cm) <span class="badge fcst">FORECAST</span></p>
+      <div class="snowgrid" id="snowGrid">
+        <span class="h">Town</span><span class="h">Next 24 h</span><span class="h">7 days</span>
+      </div>
+      <p class="snownote" id="snowNote">Loading Open-Meteo forecast…</p>
+    </div>
+  </section>
+
+  <section class="panel readout" aria-label="Status readout">
+    <p class="panel-title">Status</p>
+    <dl>
+      <dt>Source</dt><dd id="roSource">—</dd>
+      <dt>Product</dt><dd id="roProduct">—</dd>
+      <dt>Data time</dt><dd id="roTime">—</dd>
+      <dt>Tiles</dt><dd id="roTiles">—</dd>
+      <dt>Basemap</dt><dd id="roBase">—</dd>
+    </dl>
+    <p class="status loading" id="radarStatus" role="status" aria-live="polite">Starting…</p>
+    <p class="attrib attr-full">
+      Radar &amp; snowfall forecast: Environment and Climate Change Canada / <a href="https://eccc-msc.github.io/open-data/msc-geomet/readme_en/" target="_blank" rel="noopener">MSC GeoMet</a> ·
+      Town forecast: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a><span id="baseAttrib"> ·
+      Basemap: Esri World Dark Gray Canvas (Esri, HERE, Garmin, &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors, GIS user community)</span>.
+      Demo only — verify travel decisions on official sources. · v5
+    </p>
+    <p class="attrib attr-short">
+      Data: ECCC <a href="https://eccc-msc.github.io/open-data/msc-geomet/readme_en/" target="_blank" rel="noopener">MSC GeoMet</a> ·
+      <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> · basemap in map credits. Demo only · v5
+    </p>
+  </section>
+  </div>
+</div>
+
+<script>
+/* Central Alberta snow radar console — radar logic reused from index.html (Central Alberta Weather demo).
+   Every network step has a timeout and ends in either data or a visible error. */
+'use strict';
+const TOWNS = [
+  { id: 'three-hills', name: 'Three Hills', lat: 51.70722, lon: -113.26472 },
+  { id: 'drumheller',  name: 'Drumheller',  lat: 51.46444, lon: -112.71889 },
+  { id: 'stettler',    name: 'Stettler',    lat: 52.32389, lon: -112.70444 }
+];
+const REGION = { center: [51.7, -112.9], zoom: 7 };
+const TOWN_ZOOM = 9;
+const GEOMET_WMS = 'https://geo.weather.gc.ca/geomet?';
+const LIVE_LAYERS = {
+  snow: { name: 'RADAR_1KM_RSNO', label: 'snow (cm/h)', style: 'Radar-Snow_14colors' },
+  rain: { name: 'RADAR_1KM_RRAI', label: 'rain (mm/h)', style: 'Radar-Rain_14colors' }
+};
+const FCST_LAYER = { name: 'HRDPS.CONTINENTAL.DIAG_SN_PT3H', style: 'Snow-Accum_0to100cm_BlueRed', stepH: 3, maxFrames: 16 };
+const NET_TIMEOUT_MS = 10000;
+const TILE_WATCHDOG_MS = 15000;
+const REDUCED_MOTION = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+const LEAFLET_CDNS = [
+  { js: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', css: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' },
+  { js: 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js', css: 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css' }
+];
+const LEAFLET_SRI = { js: 'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=', css: 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=' };
+
+const $ = id => document.getElementById(id);
+
+let radarMap = null;
+let mode = 'live';          // 'live' | 'fcst'
+let liveKind = 'snow';      // 'snow' | 'rain'
+let overlay = null;         // current radar/forecast layer
+let fcFrames = [];          // [{time: Date, iso: string}]
+let fcRef = null;           // model reference time (ISO)
+let fcIdx = 0;
+let fcTimer = null;
+let fcPlaying = false;
+let loadSeq = 0;            // guards against stale async work after source switches
+let activePlace = 'region';
+let lastTown = 'three-hills'; // town shown in the conditions strip while "Region" is selected
+let snowErr = null, snowFetchedAt = 0, snowLoading = false, snowRetry = false;
+let curData = null, curErr = null, curFetchedAt = 0, curLoading = false, curRetry = false;
+let townMarkers = {};
+let legendImg = null, legendCap = null;
+let snowData = null;
+
+const readout = { source: '—', product: '—', time: null, timeRaw: null, tilesOk: 0, tilesFail: 0, baseOk: 0, baseFail: 0 };
+
+/* ---------- small utils ---------- */
+function fmtLocal(date) {
+  return date.toLocaleString('en-CA', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' });
+}
+function fmtAge(date) {
+  if (!date || isNaN(date)) return '';
+  const mins = Math.round((Date.now() - date.getTime()) / 60000);
+  if (mins < -90) { const h = Math.round(-mins / 60); return 'in ' + h + ' h'; }
+  if (mins < -1) return 'in ' + (-mins) + ' min';
+  if (mins <= 0) return 'just now';
+  if (mins < 60) return mins + ' min ago';
+  return Math.floor(mins / 60) + ' h ' + (mins % 60) + ' min ago';
+}
+function errText(err) {
+  if (!err) return 'unknown error';
+  if (err.name === 'AbortError') return 'timed out after ' + (NET_TIMEOUT_MS / 1000) + ' s';
+  if (err.name === 'TypeError' && /fetch|network|load failed/i.test(err.message || '')) return 'network error (' + err.message + ')';
+  return err.message || String(err);
+}
+/** fetch with a hard timeout (AbortController) so nothing can hang on "Loading". */
+async function fetchWithTimeout(url, ms = NET_TIMEOUT_MS) {
+  const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = setTimeout(() => ctl && ctl.abort(), ms);
+  try {
+    let res;
+    try {
+      res = await fetch(url, ctl ? { signal: ctl.signal } : {});
+    } catch (e) {
+      if (e && e.name === 'AbortError') { const t = new Error('timed out after ' + Math.round(ms / 1000) + ' s'); t.name = 'TimeoutError'; throw t; }
+      throw e;
+    }
+    if (!res.ok) {
+      let reason = '';
+      try { const j = JSON.parse((await res.text()).slice(0, 2000)); reason = String(j.reason || j.error_message || '').replace(/[.\s]+$/, ''); } catch (e) { /* not JSON */ }
+      const he = new Error('HTTP ' + res.status + (reason ? ' — ' + String(reason).slice(0, 120) : ''));
+      he.status = res.status; he.reason = reason;
+      throw he;
+    }
+    return res;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+function isoDurationMs(d) {
+  const m = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/.exec(d || '');
+  if (!m) return null;
+  return ((+m[1] || 0) * 86400 + (+m[2] || 0) * 3600 + (+m[3] || 0) * 60 + (+m[4] || 0)) * 1000;
+}
+
+/* ---------- header clock ---------- */
+function tickClock() {
+  const now = new Date();
+  $('clockTime').textContent = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  const tz = (now.toLocaleTimeString('en-CA', { timeZoneName: 'short' }).split(' ').pop()) || '';
+  $('clockDate').textContent = now.toLocaleDateString('en-CA', { weekday: 'short', month: 'short', day: 'numeric' }) + ' · ' + tz;
+  if (mode === 'live' && readout.time) $('ecAge').textContent = fmtAge(readout.time);
+}
+
+/* ---------- status + readout ---------- */
+function setFeed(state, label) {
+  $('feedState').dataset.state = state;
+  $('feedLabel').textContent = label;
+}
+function setStatus(msg, level) {
+  // level: 'ok' | 'loading' | 'warn' | 'error'
+  const lvl = level || 'ok';
+  const el = $('radarStatus');
+  el.className = 'status' + (lvl === 'ok' ? '' : ' ' + lvl);
+  el.textContent = msg;
+  if (lvl === 'error') setFeed('error', 'Error');
+  else if (lvl === 'warn') setFeed('warn', 'Degraded');
+  else if (lvl === 'loading') setFeed('loading', 'Loading');
+  else setFeed('ok', 'Online');
+}
+function renderReadout() {
+  $('roSource').textContent = readout.source;
+  $('roProduct').textContent = readout.product;
+  $('roTime').textContent = readout.time ? fmtLocal(readout.time) : (readout.timeRaw || '—');
+  const t = $('roTiles');
+  t.textContent = readout.tilesOk + ' ok · ' + readout.tilesFail + ' failed';
+  t.classList.toggle('bad', readout.tilesFail > 0);
+  const b = $('roBase');
+  b.textContent = baseName + ' · ' + readout.baseOk + ' ok · ' + readout.baseFail + ' failed';
+  b.classList.toggle('bad', readout.baseFail > 0);
+}
+function resetReadout(source, product) {
+  Object.assign(readout, { source, product, time: null, timeRaw: null, tilesOk: 0, tilesFail: 0 });
+  renderReadout();
+}
+
+/* ---------- Leaflet loader (timeout + CDN fallback) ---------- */
+function loadAsset(kind, url, integrity, ms) {
+  return new Promise((resolve, reject) => {
+    const el = document.createElement(kind === 'js' ? 'script' : 'link');
+    if (kind === 'js') { el.src = url; el.async = true; } else { el.rel = 'stylesheet'; el.href = url; }
+    el.integrity = integrity;
+    el.crossOrigin = 'anonymous';
+    const timer = setTimeout(() => { el.remove(); reject(new Error('timed out after ' + ms / 1000 + ' s')); }, ms);
+    el.onload = () => { clearTimeout(timer); resolve(); };
+    el.onerror = () => { clearTimeout(timer); el.remove(); reject(new Error('failed to load')); };
+    if (kind === 'css') {
+      // Put Leaflet's stylesheet BEFORE the page's own <style> so the dark-theme overrides still win
+      const own = document.querySelector('head style');
+      document.head.insertBefore(el, own || null);
+    } else {
+      document.head.appendChild(el);
+    }
+  });
+}
+async function loadLeaflet() {
+  const problems = [];
+  for (const cdn of LEAFLET_CDNS) {
+    const host = new URL(cdn.js).host;
+    const cssP = loadAsset('css', cdn.css, LEAFLET_SRI.css, NET_TIMEOUT_MS).then(() => true, () => false);
+    try {
+      await loadAsset('js', cdn.js, LEAFLET_SRI.js, NET_TIMEOUT_MS);
+      if (typeof L === 'undefined') throw new Error('loaded but L is undefined');
+      const cssOk = await cssP;
+      return { host, cssOk };
+    } catch (e) {
+      problems.push(host + ': ' + e.message);
+    }
+  }
+  throw new Error(problems.join('; '));
+}
+
+/* ---------- Dark basemap (no API key) ----------
+   Primary: Esri World Dark Gray Canvas (base + labels). Fallback: OSM with a CSS dark filter
+   if Esri fails. (CARTO dark_all needs an API key since 2026 and watermarks keyless tiles.) */
+const OSM_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+const ESRI_ATTR = 'Tiles &copy; <a href="https://www.esri.com/">Esri</a> — Esri, HERE, Garmin, ' + OSM_ATTR + ', GIS user community';
+let baseLayers = [];
+let baseName = '—';
+let baseFellBack = false;
+function trackBase(layer) {
+  layer.on('tileload', () => { readout.baseOk++; renderReadout(); });
+  layer.on('tileerror', () => { readout.baseFail++; renderReadout(); maybeFallbackBase(); });
+  return layer;
+}
+function useEsriBase() {
+  baseName = 'Esri Dark Gray';
+  const base = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', { maxZoom: 16, attribution: ESRI_ATTR });
+  const labels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', { maxZoom: 16, pane: 'labels' });
+  baseLayers = [trackBase(base), trackBase(labels)];
+  baseLayers.forEach(l => l.addTo(radarMap));
+}
+function useOsmDarkBase() {
+  baseName = 'OSM (dark filter)';
+  const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, className: 'osm-dark', attribution: OSM_ATTR });
+  baseLayers = [trackBase(osm)];
+  baseLayers.forEach(l => l.addTo(radarMap));
+  $('baseAttrib').innerHTML = ' · Basemap &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors (colour-inverted for dark mode)';
+}
+function maybeFallbackBase() {
+  if (baseFellBack || readout.baseOk > 0 || readout.baseFail < 6) return;
+  baseFellBack = true;
+  console.warn('Esri basemap failed; falling back to OSM dark filter');
+  baseLayers.forEach(l => radarMap.removeLayer(l));
+  readout.baseOk = 0; readout.baseFail = 0;
+  useOsmDarkBase();
+  renderReadout();
+}
+
+/* ---------- GeoMet capabilities ---------- */
+/** Parse latest TIME from MSC GeoMet GetCapabilities Dimension (ISO8601 interval or list). */
+function parseGeometLatestTime(dimensionText, defaultAttr) {
+  if (defaultAttr && /^\d{4}-\d{2}-\d{2}T/.test(defaultAttr)) return defaultAttr;
+  if (!dimensionText) return null;
+  const t = dimensionText.trim();
+  if (t.includes(',') && !t.includes('/')) {
+    const parts = t.split(',').map(s => s.trim()).filter(Boolean);
+    return parts.length ? parts[parts.length - 1] : null;
+  }
+  const bits = t.split('/');
+  if (bits.length >= 2 && /^\d{4}-\d{2}-\d{2}T/.test(bits[1])) return bits[1];
+  if (bits.length >= 1 && /^\d{4}-\d{2}-\d{2}T/.test(bits[0])) return bits[0];
+  return null;
+}
+/** Fetch the capabilities chunk for one layer; returns its time / reference_time dimensions. */
+async function fetchGeometLayerDims(layerName) {
+  const url = GEOMET_WMS + new URLSearchParams({ SERVICE: 'WMS', VERSION: '1.3.0', REQUEST: 'GetCapabilities', LAYERS: layerName }).toString();
+  let res;
+  try { res = await fetchWithTimeout(url); } catch (e) { throw new Error('GetCapabilities ' + errText(e)); }
+  const xml = await res.text();
+  const idx = xml.indexOf('<Name>' + layerName + '</Name>');
+  if (idx < 0) throw new Error('layer ' + layerName + ' not in capabilities');
+  const end = xml.indexOf('</Layer>', idx);
+  const chunk = xml.slice(idx, end > idx ? end : idx + 4000);
+  const dim = name => {
+    const re = new RegExp('<Dimension[^>]*name="' + name + '"([^>]*)>([^<]*)</Dimension>', 'i');
+    const m = re.exec(chunk);
+    if (!m) return null;
+    const def = /default="([^"]+)"/i.exec(m[1]);
+    return { text: m[2].trim(), def: def ? def[1] : null };
+  };
+  return { time: dim('time'), ref: dim('reference_time') };
+}
+
+/* ---------- overlays + tile watching ---------- */
+function clearOverlay() {
+  if (overlay && radarMap) radarMap.removeLayer(overlay);
+  overlay = null;
+  stopFcPlayback();
+}
+/** Returns true if the tile image has any non-transparent pixel, false if empty, null if unknown. */
+const probeCanvas = document.createElement('canvas');
+probeCanvas.width = probeCanvas.height = 128;
+function tileHasEchoes(img) {
+  try {
+    const ctx = probeCanvas.getContext('2d', { willReadFrequently: true });
+    ctx.clearRect(0, 0, 128, 128);
+    ctx.drawImage(img, 0, 0, 128, 128);
+    const d = ctx.getImageData(0, 0, 128, 128).data;
+    for (let i = 3; i < d.length; i += 4) if (d[i] > 8) return true;
+    return false;
+  } catch (e) {
+    return null; // cross-origin taint or decode issue: unknown, don't claim anything
+  }
+}
+/**
+ * Watch a radar/forecast layer so the status line always resolves:
+ *  - all tiles done: ok / partial failure / total failure, plus "no echoes in view" when the tiles are empty
+ *  - watchdog: if tiles haven't finished after TILE_WATCHDOG_MS, report that instead of spinning forever
+ */
+function watchTiles(layer, seq, opts) {
+  let loaded = 0, failed = 0, withData = 0, unknown = 0, settled = false;
+  const current = () => seq === loadSeq && overlay === layer;
+  layer.on('loading', () => { loaded = failed = withData = unknown = 0; settled = false; armWatchdog(); });
+  layer.on('tileload', e => {
+    loaded++;
+    const has = tileHasEchoes(e.tile);
+    if (has === true) withData++; else if (has === null) unknown++;
+    if (current()) { readout.tilesOk++; renderReadout(); }
+  });
+  layer.on('tileerror', () => {
+    failed++;
+    if (current()) { readout.tilesFail++; renderReadout(); }
+  });
+  layer.on('load', () => {
+    settled = true;
+    if (!current()) return;
+    if (failed && !loaded) {
+      setStatus(opts.prefix + ': all ' + failed + ' tiles failed to load (network or server problem). Basemap still shown.', 'error');
+      return;
+    }
+    let msg = opts.okMsg;
+    if (loaded && !withData && !unknown) msg += ' · ' + opts.emptyMsg;
+    if (failed) { setStatus(msg + ' · ' + failed + ' tile(s) failed', 'warn'); return; }
+    setStatus(msg, opts.okLevel || 'ok');
+    if (opts.onSettled) opts.onSettled();
+  });
+  let wd = null;
+  function armWatchdog() {
+    clearTimeout(wd);
+    wd = setTimeout(() => {
+      if (settled || !current()) return;
+      setStatus(opts.prefix + ': tiles still loading after ' + TILE_WATCHDOG_MS / 1000 + ' s (' + loaded + ' ok, ' + failed +
+        ' failed). The server or network is slow; the map stays usable.', 'warn');
+    }, TILE_WATCHDOG_MS);
+  }
+  armWatchdog();
+}
+function wmsLayer(layerName, style, extra) {
+  const params = Object.assign({
+    format: 'image/png', transparent: true, version: '1.3.0', layers: layerName, styles: style || '',
+    opacity: 0.9, crossOrigin: 'anonymous', uppercase: true,
+    attribution: 'Environment and Climate Change Canada / MSC GeoMet'
+  }, extra || {});
+  return L.tileLayer.wms(GEOMET_WMS, params);
+}
+function setLegend(layerName, style, caption) {
+  if (!legendImg) return;
+  legendImg.alt = 'Legend for ' + layerName;
+  legendImg.src = GEOMET_WMS + new URLSearchParams({
+    version: '1.3.0', service: 'WMS', request: 'GetLegendGraphic', sld_version: '1.1.0',
+    layer: layerName, format: 'image/png', STYLE: style
+  }).toString();
+  legendImg.onerror = () => { legendCap.textContent = 'Legend image failed to load.'; };
+  legendCap.textContent = caption;
+}
+
+/* ---------- Live radar (EC GeoMet) ---------- */
+async function loadLive() {
+  const seq = ++loadSeq;
+  clearOverlay();
+  const L0 = LIVE_LAYERS[liveKind];
+  resetReadout('ECCC MSC GeoMet · live radar', L0.name);
+  setStatus('Checking latest ' + L0.name + ' scan…', 'loading');
+  $('ecTimestamp').textContent = 'Checking…';
+  $('ecAge').textContent = '';
+  setLegend(L0.name, L0.style, liveKind === 'snow' ? 'Radar snowfall rate (cm/h). Live observation.' : 'Radar rain rate (mm/h). Live observation.');
+  let timeStr = null, timeErr = null;
+  try {
+    const dims = await fetchGeometLayerDims(L0.name);
+    timeStr = dims.time ? parseGeometLatestTime(dims.time.text, dims.time.def) : null;
+    if (!timeStr) timeErr = new Error('no time dimension found');
+  } catch (e) {
+    timeErr = e; // fall back to WMS without TIME (server returns its latest)
+    console.warn('GeoMet time lookup failed', e);
+  }
+  if (seq !== loadSeq) return;
+  let timeNote;
+  if (timeStr) {
+    const d = new Date(timeStr);
+    readout.time = isNaN(d) ? null : d;
+    readout.timeRaw = timeStr;
+    const local = isNaN(d) ? timeStr : fmtLocal(d);
+    $('ecTimestamp').textContent = local;
+    $('ecAge').textContent = fmtAge(readout.time);
+    timeNote = 'scan ' + local;
+  } else {
+    readout.timeRaw = 'server latest (time unknown)';
+    $('ecTimestamp').textContent = 'Latest (time unknown)';
+    $('ecAge').textContent = 'Couldn’t read the scan time (' + errText(timeErr) + '). Showing the server’s latest image.';
+    timeNote = 'scan time unavailable (' + errText(timeErr) + '), showing server latest';
+  }
+  renderReadout();
+  const okMsg = 'Live ' + L0.label + ' radar · ' + timeNote;
+  const layer = wmsLayer(L0.name, '', timeStr ? { time: timeStr } : {});
+  overlay = layer;
+  setStatus(okMsg + ' · loading tiles…', 'loading');
+  watchTiles(layer, seq, {
+    prefix: 'EC GeoMet radar', okMsg, okLevel: timeStr ? 'ok' : 'warn',
+    emptyMsg: liveKind === 'snow'
+      ? 'radar online, no snow detected in this view (normal when no snow is falling)'
+      : 'radar online, no rain detected in this view'
+  });
+  layer.addTo(radarMap);
+}
+
+/* ---------- Snowfall forecast (EC GeoMet HRDPS 3-h snowfall) ---------- */
+function buildFrames(timeDim) {
+  const bits = (timeDim.text || '').split('/');
+  const out = [];
+  if (bits.length === 3) {
+    const start = Date.parse(bits[0]), end = Date.parse(bits[1]), step = isoDurationMs(bits[2]);
+    if (!isNaN(start) && !isNaN(end) && step) {
+      const want = FCST_LAYER.stepH * 3600000;
+      const inc = Math.max(step, Math.round(want / step) * step);
+      for (let t = start; t <= end && out.length < 200; t += inc) out.push(t);
+    }
+  } else if (timeDim.text.includes(',')) {
+    timeDim.text.split(',').forEach(s => { const t = Date.parse(s.trim()); if (!isNaN(t)) out.push(t); });
+  }
+  // Start at the first step at/after "now - 3h" so the loop covers upcoming snow
+  const from = Date.now() - FCST_LAYER.stepH * 3600000;
+  const upcoming = out.filter(t => t >= from).slice(0, FCST_LAYER.maxFrames);
+  return upcoming.map(t => ({ time: new Date(t), iso: new Date(t).toISOString().replace('.000Z', 'Z') }));
+}
+async function loadForecast() {
+  const seq = ++loadSeq;
+  clearOverlay();
+  resetReadout('ECCC MSC GeoMet · HRDPS model', 'Snowfall, 3-h accumulation');
+  setStatus('Loading HRDPS snowfall forecast steps…', 'loading');
+  $('fcTimestamp').textContent = 'Loading…';
+  $('fcAge').textContent = '';
+  setLegend(FCST_LAYER.name, FCST_LAYER.style, 'Model forecast: snowfall in the 3 h ending at the time shown (cm, 10:1 from liquid equivalent). Not an observation.');
+  fcFrames = [];
+  renderTicks();
+  updateChrome();
+  let dims = null, err = null;
+  try {
+    dims = await fetchGeometLayerDims(FCST_LAYER.name);
+    if (!dims.time) throw new Error('no time dimension found');
+  } catch (e) { err = e; }
+  if (seq !== loadSeq) return;
+  if (err || !dims) {
+    // Fall back to a single frame at the server default time (still real data)
+    fcRef = null;
+    setStatus('Forecast time steps unavailable (' + errText(err) + '). Showing the server’s default step only.', 'warn');
+    fcFrames = [];
+    renderTicks();
+    updateChrome();
+    showFcFrame(null, seq);
+    return;
+  }
+  fcRef = dims.ref && dims.ref.def ? dims.ref.def : null;
+  fcFrames = buildFrames(dims.time);
+  if (!fcFrames.length) {
+    setStatus('HRDPS returned no upcoming forecast steps. Try again later.', 'warn');
+    $('fcTimestamp').textContent = '—';
+    updateChrome();
+    return;
+  }
+  fcIdx = 0;
+  updateChrome();
+  showFcFrame(0, seq);
+}
+function showFcFrame(i, seq) {
+  if (!radarMap) return;
+  seq = seq || loadSeq;
+  const old = overlay;
+  let frame = null;
+  if (i !== null && fcFrames.length) {
+    fcIdx = ((i % fcFrames.length) + fcFrames.length) % fcFrames.length;
+    frame = fcFrames[fcIdx];
+  }
+  const extra = {};
+  if (frame) extra.time = frame.iso;
+  if (fcRef) extra.dim_reference_time = fcRef;
+  const layer = wmsLayer(FCST_LAYER.name, FCST_LAYER.style, extra);
+  overlay = layer;
+  const runTxt = fcRef ? 'HRDPS run ' + fmtLocal(new Date(fcRef)) : 'HRDPS latest run';
+  const whenTxt = frame ? fmtLocal(frame.time) : 'server default step';
+  readout.time = frame ? frame.time : null;
+  readout.timeRaw = frame ? frame.iso : 'server default';
+  readout.product = 'Snowfall 3-h · step ' + (frame ? (fcIdx + 1) + '/' + fcFrames.length : '1/1');
+  readout.tilesOk = 0; readout.tilesFail = 0;
+  renderReadout();
+  $('fcTimestamp').textContent = whenTxt + (frame ? ' (' + (fcIdx + 1) + '/' + fcFrames.length + ')' : '');
+  $('fcAge').textContent = (frame ? fmtAge(frame.time) + ' · ' : '') + runTxt;
+  const okMsg = frame
+    ? 'FORECAST · HRDPS 3-h snowfall ending ' + whenTxt + ' · ' + runTxt
+    : 'FORECAST · HRDPS 3-h snowfall · time steps unavailable, showing the server’s default step only';
+  // While playing, frames change faster than tiles settle: keep the status on the frame being shown
+  // (the tile watcher still reports failures for the current frame).
+  if (!fcPlaying) setStatus(okMsg + ' · loading tiles…', 'loading');
+  else setStatus(okMsg + ' · playing', frame ? 'ok' : 'warn');
+  watchTiles(layer, seq, {
+    prefix: 'HRDPS forecast', okMsg, okLevel: frame ? 'ok' : 'warn',
+    emptyMsg: 'no snowfall forecast in this view for this 3-h window'
+  });
+  layer.addTo(radarMap);
+  if (old) {
+    const drop = () => { if (radarMap.hasLayer(old)) radarMap.removeLayer(old); };
+    layer.once('load', drop);
+    setTimeout(drop, 2500);
+  }
+  renderTicks();
+}
+function stopFcPlayback() {
+  if (fcTimer) { clearInterval(fcTimer); fcTimer = null; }
+  fcPlaying = false;
+  const b = $('fcPlay');
+  if (b) { b.textContent = 'Play'; b.classList.remove('active'); }
+}
+function toggleFcPlay() {
+  if (!fcFrames.length) return;
+  if (fcPlaying) { stopFcPlayback(); return; }
+  fcPlaying = true;
+  $('fcPlay').textContent = 'Pause';
+  $('fcPlay').classList.add('active');
+  fcTimer = setInterval(() => showFcFrame(fcIdx + 1), REDUCED_MOTION ? 2200 : 1200);
+}
+function stepFc(delta) {
+  if (!fcFrames.length) return;
+  stopFcPlayback();
+  showFcFrame(fcIdx + delta);
+}
+function renderTicks() {
+  const box = $('fcTicks');
+  if (box.childElementCount !== fcFrames.length) {
+    box.innerHTML = '';
+    fcFrames.forEach((f, i) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'tick'; b.tabIndex = -1;
+      b.title = fmtLocal(f.time);
+      b.onclick = () => { stopFcPlayback(); showFcFrame(i); };
+      box.appendChild(b);
+    });
+  }
+  Array.from(box.children).forEach((b, i) => b.classList.toggle('on', i === fcIdx));
+}
+
+/* ---------- source switching ---------- */
+function updateChrome() {
+  [['srcLive', mode === 'live'], ['srcFcst', mode === 'fcst'], ['ecSnow', liveKind === 'snow'], ['ecRain', liveKind === 'rain']]
+    .forEach(([id, on]) => { $(id).classList.toggle('active', on); $(id).setAttribute('aria-pressed', on ? 'true' : 'false'); });
+  $('liveSub').classList.toggle('visible', mode === 'live');
+  $('fcstSub').classList.toggle('visible', mode === 'fcst');
+  const has = fcFrames.length > 0;
+  ['fcPrev', 'fcPlay', 'fcNext'].forEach(id => { $(id).disabled = !has; });
+  if (radarMap) setTimeout(() => radarMap.invalidateSize(), 0);
+}
+function applySource() {
+  updateChrome();
+  if (!radarMap) return Promise.resolve();
+  const p = mode === 'live' ? loadLive() : loadForecast();
+  return p.catch(e => {
+    console.error(e);
+    setStatus('Could not load ' + (mode === 'live' ? 'live radar' : 'snow forecast') + ': ' + errText(e) + '. Basemap still shown.', 'error');
+  });
+}
+
+/* ---------- Town navigation + URL hash ---------- */
+function placeFromHash() {
+  const h = (location.hash || '').replace('#', '').toLowerCase();
+  return h === 'region' || TOWNS.some(t => t.id === h) ? h : 'region';
+}
+function goToPlace(id, opts) {
+  opts = opts || {};
+  activePlace = id;
+  document.querySelectorAll('.townnav a').forEach(a => {
+    const on = a.dataset.place === id;
+    a.classList.toggle('active', on);
+    if (on) a.setAttribute('aria-current', 'true'); else a.removeAttribute('aria-current');
+  });
+  if (opts.updateHash !== false) {
+    try { history.replaceState(null, '', '#' + id); } catch (e) { location.hash = id; }
+  }
+  Object.entries(townMarkers).forEach(([tid, m]) => {
+    const on = tid === id;
+    m.setStyle({ radius: on ? 8 : 5, weight: on ? 3 : 2, fillColor: on ? '#14e0c0' : '#19d3c5' });
+    const tt = m.getTooltip && m.getTooltip();
+    const el = tt && tt.getElement && tt.getElement();
+    if (el) el.classList.toggle('on', on);
+    if (on) m.bringToFront();
+  });
+  renderSnow();
+  if (!radarMap) return;
+  const town = TOWNS.find(t => t.id === id);
+  const target = town ? [town.lat, town.lon] : REGION.center;
+  const zoom = town ? TOWN_ZOOM : REGION.zoom;
+  if (REDUCED_MOTION || opts.instant) radarMap.setView(target, zoom, { animate: false });
+  else radarMap.flyTo(target, zoom, { duration: 1.1 });
+}
+
+/* ---------- Town data from Open-Meteo (same API as index.html) ----------
+   Two independent requests so a slow or failed one never blanks the other:
+   1) current conditions (tiny, ~1 KB): TEMP / HUMIDITY / feels-like, refreshed every 10 min
+   2) snowfall history + forecast (~60 KB): SNOW 24H / 7D / SEASON and the forecast table, every 30 min */
+const OM_API = 'https://api.open-meteo.com/v1/forecast';
+const OM_TIMEOUT_MS = 15000;
+const CUR_REFRESH_MS = 10 * 60 * 1000;
+const SNOW_REFRESH_MS = 30 * 60 * 1000;
+const STALE_LIMIT_MS = 3 * 60 * 60 * 1000; // keep showing last good values (marked stale) for up to 3 h after a failed refresh
+function omUrl(params) {
+  const url = new URL(OM_API);
+  url.searchParams.set('latitude', TOWNS.map(t => t.lat).join(','));
+  url.searchParams.set('longitude', TOWNS.map(t => t.lon).join(','));
+  url.searchParams.set('timezone', 'America/Edmonton');
+  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+  return url.toString();
+}
+function isRetryable(e) {
+  if (!e) return false;
+  if (e.name === 'TimeoutError' || e.name === 'TypeError') return true;         // timeout / network drop
+  if (e.status === 429) return !/daily/i.test(e.reason || '');                   // minutely/hourly limit: worth one retry
+  return e.status >= 500;
+}
+/* One try, then one retry with backoff (2-3 s, or 8 s after a rate limit). */
+async function omJson(url, onRetry) {
+  try {
+    return await (await fetchWithTimeout(url, OM_TIMEOUT_MS)).json();
+  } catch (e1) {
+    if (!isRetryable(e1)) throw e1;
+    if (onRetry) onRetry(errText(e1));
+    await new Promise(r => setTimeout(r, (e1.status === 429 ? 8000 : 2000) + Math.random() * 1000));
+    return await (await fetchWithTimeout(url, OM_TIMEOUT_MS)).json();
+  }
+}
+/* Multi-location responses come back in request order; check each grid cell really is near its town. */
+function perTown(raw) {
+  const list = Array.isArray(raw) ? raw : [raw];
+  if (list.length !== TOWNS.length) throw new Error('unexpected response: ' + list.length + ' locations for ' + TOWNS.length + ' towns');
+  return list.map((item, i) => {
+    const t = TOWNS[i];
+    if (!item || typeof item.latitude !== 'number' || Math.abs(item.latitude - t.lat) > 0.3 || Math.abs(item.longitude - t.lon) > 0.3) {
+      throw new Error('response locations do not match the towns');
+    }
+    return { town: t, item };
+  });
+}
+const finite = v => (typeof v === 'number' && isFinite(v) ? v : null);
+function fmtClock(ms) {
+  // 24-hour like the header clock, with the zone label (e.g. "21:30 MDT")
+  return new Date(ms).toLocaleTimeString('en-CA', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short' });
+}
+
+async function loadCurrent() {
+  if (curLoading) return;
+  curLoading = true;
+  try {
+    const raw = await omJson(omUrl({ current: 'temperature_2m,relative_humidity_2m,apparent_temperature' }),
+      () => { curRetry = true; renderWx(); });
+    const next = {};
+    perTown(raw).forEach(({ town, item }) => {
+      const c = item.current || {}, u = item.current_units || {};
+      const off = (item.utc_offset_seconds || 0) * 1000;
+      const okC = !u.temperature_2m || u.temperature_2m === '°C';
+      const okP = !u.relative_humidity_2m || u.relative_humidity_2m === '%';
+      const t = c.time ? Date.parse(c.time + 'Z') - off : NaN;
+      next[town.id] = {
+        temp: okC ? finite(c.temperature_2m) : null,
+        feels: okC ? finite(c.apparent_temperature) : null,
+        rh: okP ? finite(c.relative_humidity_2m) : null,
+        time: isFinite(t) ? t : null
+      };
+    });
+    curData = next; curErr = null; curFetchedAt = Date.now();
+  } catch (e) {
+    curErr = errText(e);
+  } finally {
+    curLoading = false; curRetry = false;
+  }
+  renderWx();
+}
+
+async function loadTownSnow() {
+  if (snowLoading) return;
+  snowLoading = true;
+  const season = seasonWindow();
+  const url = omUrl({ hourly: 'snowfall', daily: 'snowfall_sum', past_days: String(season.pastDays), forecast_days: '7' });
+  try {
+    const raw = await omJson(url, msg => {
+      snowRetry = true;
+      $('snowNote').textContent = 'Open-Meteo slow or busy (' + msg + '), retrying…';
+      renderWx();
+    });
+    const now = Date.now();
+    snowData = perTown(raw).map(({ town, item }) => {
+      const off = (item.utc_offset_seconds || 0) * 1000;
+      const times = (item.hourly && item.hourly.time) || [];
+      const vals = (item.hourly && item.hourly.snowfall) || [];
+      let next24 = 0, n = 0;
+      for (let k = 0; k < times.length && n < 24; k++) {
+        const t = Date.parse(times[k] + 'Z') - off;
+        if (t > now) { next24 += finite(vals[k]) || 0; n++; } // hours still to come (incl. the one in progress)
+      }
+      // Forecast 7 days: today onward only (the response also holds past_days)
+      const dT = (item.daily && item.daily.time) || [], dV = (item.daily && item.daily.snowfall_sum) || [];
+      const today = todayYmd();
+      let week = 0, wn = 0;
+      for (let k = 0; k < dT.length && wn < 7; k++) if (dT[k] >= today) { week += finite(dV[k]) || 0; wn++; }
+      // Snow fallen (modelled): hourly totals whose hour has already ended. An hourly value
+      // stamped HH:00 is the snowfall during the preceding hour.
+      const past = hours => sumHours(times, vals, off, now - hours * 3600000, now);
+      return {
+        id: town.id, name: town.name, next24: n ? next24 : null, week: wn ? week : null,
+        s24: past(24), s7: past(168),
+        season: season.covered ? sumHours(times, vals, off, season.startMs(off), now, true) : null
+      };
+    });
+    snowErr = null; snowFetchedAt = now;
+    const note = $('snowNote');
+    note.className = 'snownote';
+    note.textContent = 'Open-Meteo model forecast (cm) · updated ' + fmtClock(now);
+  } catch (e) {
+    snowErr = errText(e);
+    const note = $('snowNote');
+    note.className = 'snownote error';
+    if (snowData && Date.now() - snowFetchedAt < STALE_LIMIT_MS) {
+      note.textContent = 'Update failed (' + snowErr + '); showing data from ' + fmtClock(snowFetchedAt) + '.';
+    } else {
+      snowData = null;
+      note.textContent = 'Town forecast unavailable: ' + snowErr + '.';
+    }
+  } finally {
+    snowLoading = false; snowRetry = false;
+  }
+  renderSnow();
+}
+/* Snow season window: Sept 1 (local) onward, if Open-Meteo past_days (max 92) can cover it */
+function edmontonParts(d) {
+  const p = {};
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Edmonton', year: 'numeric', month: '2-digit', day: '2-digit' })
+    .formatToParts(d || new Date()).forEach(x => { p[x.type] = x.value; });
+  return { y: +p.year, m: +p.month, d: +p.day };
+}
+function todayYmd() { const t = edmontonParts(); return t.y + '-' + String(t.m).padStart(2, '0') + '-' + String(t.d).padStart(2, '0'); }
+function seasonWindow() {
+  const t = edmontonParts();
+  const sy = t.m >= 9 ? t.y : t.y - 1;
+  const days = Math.round((Date.UTC(t.y, t.m - 1, t.d) - Date.UTC(sy, 8, 1)) / 86400000); // days since Sept 1
+  const covered = days + 1 <= 92;
+  return {
+    covered, days,
+    pastDays: covered ? Math.max(7, days + 1) : 7, // 7 days minimum so SNOW 7D is always covered
+    // Sept 1 00:00 local, as epoch ms, given the response's UTC offset
+    startMs: off => Date.UTC(sy, 8, 1) - off
+  };
+}
+// Sum hourly snowfall for hours ending in (fromMs, toMs]. null if no data covers the window.
+function sumHours(times, vals, off, fromMs, toMs, needStart) {
+  if (!times.length) return null;
+  if (Date.parse(times[0] + 'Z') - off > fromMs + 3600000) return null; // window starts before the data
+  let sum = 0, n = 0;
+  for (let k = 0; k < times.length; k++) {
+    const t = Date.parse(times[k] + 'Z') - off;
+    if (t <= fromMs || t > toMs) continue;
+    if (typeof vals[k] === 'number') { sum += vals[k]; n++; }
+  }
+  return n ? sum : null;
+}
+function renderWx() {
+  const box = document.querySelector('.wx');
+  if (!box) return;
+  const tid = TOWNS.some(t => t.id === activePlace) ? activePlace : lastTown;
+  const town = TOWNS.find(t => t.id === tid);
+  $('wxTown').textContent = town.name;
+  const set = (id, v, dp) => { $(id).textContent = v === null || v === undefined ? '--' : v.toFixed(dp); };
+  const now = Date.now();
+  // current conditions (fast request)
+  const curUsable = curData && now - curFetchedAt < STALE_LIMIT_MS;
+  const c = curUsable ? curData[tid] : null;
+  const main = $('wxMain');
+  main.classList.toggle('na', !c);
+  main.classList.toggle('stale', !!(c && curErr));
+  set('wxTemp', c ? c.temp : null, 1);
+  set('wxRh', c ? c.rh : null, 0);
+  $('wxFeels').innerHTML = 'feels <span class="fl">like </span>';
+  $('wxFeels').appendChild(document.createTextNode(c && c.feels !== null ? c.feels.toFixed(1) + '°' : '--'));
+  $('wxAt').textContent = c && c.time ? '· ' + fmtClock(c.time) : (curLoading ? '· loading' : '· --');
+  // snow fallen (history request)
+  const s = snowData && snowData.find(x => x.id === tid);
+  const snowBox = $('wxSnow');
+  snowBox.classList.toggle('na', !s);
+  snowBox.classList.toggle('stale', !!(s && snowErr));
+  set('wxS24', s ? s.s24 : null, 1);
+  set('wxS7', s ? s.s7 : null, 1);
+  set('wxSs', s ? s.season : null, 1);
+  $('wxSs').parentNode.parentNode.title = seasonWindow().covered ? 'Modelled snowfall since Sept 1 (local)' :
+    'Season total needs more than 92 days of history, which this key-free request cannot cover';
+  // one honest status line for both requests
+  const problems = [];
+  if (curErr) problems.push(c ? 'Current conditions not updated (' + curErr + '); showing ' + fmtClock(c.time || curFetchedAt) + ' values'
+                               : 'Current conditions unavailable: ' + curErr);
+  else if (curRetry) problems.push('Current conditions slow, retrying…');
+  if (snowErr) problems.push(s ? 'Snow totals not updated (' + snowErr + ')' : 'Snow totals unavailable: ' + snowErr);
+  else if (snowRetry) problems.push('Snow history slow, retrying…');
+  const note = $('wxNote');
+  if (problems.length) {
+    note.className = 'wxnote error';
+    note.textContent = problems.join(' · ').replace(/([^.…])$/, '$1.');
+  } else if (!c || !s) {
+    note.className = 'wxnote';
+    note.textContent = !c && !s ? 'Loading current conditions and snow totals from Open-Meteo…'
+      : !c ? 'Loading current conditions from Open-Meteo…' : 'Loading snow totals (larger download)…';
+  } else {
+    note.className = 'wxnote';
+    note.textContent = 'Model estimates, not gauge readings · season = since Sep 1' + (activePlace === 'region' ? ' · pick a town above' : '');
+  }
+}
+function renderSnow() {
+  if (TOWNS.some(t => t.id === activePlace)) lastTown = activePlace;
+  renderWx();
+  const grid = $('snowGrid');
+  grid.querySelectorAll('.cell').forEach(c => c.remove());
+  if (!snowData) return;
+  snowData.forEach(s => {
+    const on = s.id === activePlace;
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    const fmt = v => (v === null ? 'n/a' : v.toFixed(1) + ' cm');
+    cell.innerHTML = '<span class="t' + (on ? ' on' : '') + '"></span><span class="v' + (on ? ' on' : '') + '"></span><span class="v' + (on ? ' on' : '') + '"></span>';
+    cell.children[0].textContent = s.name;
+    cell.children[1].textContent = fmt(s.next24);
+    cell.children[1].title = 'Next 24 h';
+    cell.children[2].textContent = fmt(s.week);
+    cell.children[2].title = '7 days';
+    if (window.matchMedia('(max-width: 720px)').matches) {
+      const n1 = v => (v === null ? 'n/a' : v.toFixed(1));
+      cell.children[1].textContent = '24h ' + n1(s.next24);
+      cell.children[2].textContent = '7d ' + n1(s.week);
+    }
+    grid.appendChild(cell);
+  });
+}
+
+/* ---------- map ---------- */
+function initMap() {
+  $('mapMsg').remove();
+  radarMap = L.map('radarMap', {
+    tapTolerance: 25, zoomControl: false,
+    fadeAnimation: !REDUCED_MOTION, zoomAnimation: !REDUCED_MOTION, markerZoomAnimation: !REDUCED_MOTION
+  }).setView(REGION.center, REGION.zoom);
+  L.control.zoom({ position: 'topright' }).addTo(radarMap);
+  radarMap.createPane('labels');
+  radarMap.getPane('labels').style.zIndex = 450;
+  radarMap.getPane('labels').style.pointerEvents = 'none';
+  useEsriBase();
+  L.control.scale({ imperial: false, position: 'bottomright' }).addTo(radarMap);
+  // Legend (collapsible)
+  const Legend = L.Control.extend({
+    options: { position: 'topright' },
+    onAdd() {
+      const d = L.DomUtil.create('details', 'legend-ctl');
+      d.innerHTML = '<summary>Legend</summary><div class="lg-body"><img alt="Legend" /><div class="lg-cap"></div></div>';
+      legendImg = d.querySelector('img');
+      legendCap = d.querySelector('.lg-cap');
+      L.DomEvent.disableClickPropagation(d);
+      L.DomEvent.disableScrollPropagation(d);
+      return d;
+    }
+  });
+  new Legend().addTo(radarMap);
+  TOWNS.forEach(t => {
+    const m = L.circleMarker([t.lat, t.lon], { radius: 5, color: '#99f6e4', weight: 2, fillColor: '#19d3c5', fillOpacity: 0.95, className: 'town-dot' })
+      .bindTooltip(t.name, { permanent: true, direction: 'right', offset: [6, 0], className: 'town-label' })
+      .on('click', () => goToPlace(t.id))
+      .addTo(radarMap);
+    townMarkers[t.id] = m;
+  });
+  setTimeout(() => radarMap.invalidateSize(), 120);
+}
+
+function wireUi() {
+  $('srcLive').onclick = () => { mode = 'live'; applySource(); };
+  $('srcFcst').onclick = () => { mode = 'fcst'; applySource(); };
+  $('ecSnow').onclick = () => { liveKind = 'snow'; if (mode === 'live') applySource(); else updateChrome(); };
+  $('ecRain').onclick = () => { liveKind = 'rain'; if (mode === 'live') applySource(); else updateChrome(); };
+  $('ecRefresh').onclick = () => { if (mode === 'live') applySource(); };
+  $('fcPlay').onclick = () => toggleFcPlay();
+  $('fcPrev').onclick = () => stepFc(-1);
+  $('fcNext').onclick = () => stepFc(1);
+  document.querySelectorAll('.townnav a').forEach(a => {
+    a.addEventListener('click', e => { e.preventDefault(); goToPlace(a.dataset.place); });
+  });
+  window.addEventListener('hashchange', () => goToPlace(placeFromHash(), { updateHash: false }));
+  document.addEventListener('keydown', e => {
+    if (mode !== 'fcst' || (e.target.closest && e.target.closest('input, textarea'))) return;
+    if (e.key === 'ArrowLeft') { e.preventDefault(); stepFc(-1); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); stepFc(1); }
+  });
+  window.addEventListener('resize', () => { if (radarMap) radarMap.invalidateSize(); renderSnow(); });
+  updateChrome();
+}
+
+
+/* ---------- Sonar ping (Web Audio API only, no audio files) ----------
+   One very quiet, low-passed sine tick per rotation of the header radar sweep. Pings are driven by the sweep's own
+   'animationiteration' events, so sound and picture stay locked together and cannot drift. If the
+   sweep isn't animating (prefers-reduced-motion), a drift-corrected timer with the same period is used.
+   Browsers block audio until a user gesture, so the AudioContext starts on the first tap/click/key. */
+const SONAR_KEY = 'centralAbRadar.sonarSound';
+// Quiet background tick: felt rather than noticed.
+const PING = { f0: 440, f1: 410, attack: 0.018, decay: 0.4, peak: 0.02, lowpassHz: 1800, echoDelay: 0.28, echoFeedback: 0.12, echoMix: 0.1 };
+let sonarEnabled = true;
+let audioCtx = null, sonarMaster = null, sonarEchoIn = null;
+let sonarUnsupported = false;
+let fallbackTimer = null, fallbackT0 = 0, fallbackN = 0;
+try { if (localStorage.getItem(SONAR_KEY) === '0') sonarEnabled = false; } catch (e) { /* storage blocked: default on */ }
+
+function sweepPeriodMs() {
+  const raw = getComputedStyle(document.documentElement).getPropertyValue('--sweep-period').trim();
+  const m = /^([\d.]+)(ms|s)$/.exec(raw);
+  const v = m ? parseFloat(m[1]) * (m[2] === 's' ? 1000 : 1) : 3600;
+  return v > 500 ? v : 3600;
+}
+function buildSonarGraph() {
+  // master -> low-pass (takes the edge off) -> speakers
+  const tone = audioCtx.createBiquadFilter();
+  tone.type = 'lowpass'; tone.frequency.value = PING.lowpassHz; tone.Q.value = 0.5;
+  tone.connect(audioCtx.destination);
+  sonarMaster = audioCtx.createGain();
+  sonarMaster.gain.value = 1;
+  sonarMaster.connect(tone);
+  // Very faint single-ish echo (low feedback, darker than the dry tick)
+  sonarEchoIn = audioCtx.createGain();
+  const delay = audioCtx.createDelay(1.0);
+  delay.delayTime.value = PING.echoDelay;
+  const lp = audioCtx.createBiquadFilter();
+  lp.type = 'lowpass'; lp.frequency.value = 1000; lp.Q.value = 0.4;
+  const fb = audioCtx.createGain(); fb.gain.value = PING.echoFeedback;
+  const echoOut = audioCtx.createGain(); echoOut.gain.value = PING.echoMix;
+  sonarEchoIn.connect(delay); delay.connect(lp); lp.connect(fb); fb.connect(delay); lp.connect(echoOut); echoOut.connect(sonarMaster);
+}
+function startAudio() {
+  if (sonarUnsupported) return;
+  if (!audioCtx) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) { sonarUnsupported = true; updateSoundUi(); return; }
+    try { audioCtx = new AC(); } catch (e) { sonarUnsupported = true; updateSoundUi(); return; }
+    audioCtx.onstatechange = updateSoundUi;
+    buildSonarGraph();
+  }
+  if (audioCtx.state !== 'running' && !document.hidden) audioCtx.resume().catch(() => {}).then(updateSoundUi);
+  updateSoundUi();
+}
+function playPing() {
+  if (!sonarEnabled || !audioCtx || audioCtx.state !== 'running' || document.hidden) return;
+  const t = audioCtx.currentTime + 0.01;
+  const osc = audioCtx.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(PING.f0, t);
+  osc.frequency.exponentialRampToValueAtTime(PING.f1, t + PING.decay * 0.9); // slight downward glide
+  const env = audioCtx.createGain();
+  env.gain.setValueAtTime(0, t);
+  env.gain.linearRampToValueAtTime(PING.peak, t + PING.attack);            // soft ~18 ms attack
+  env.gain.exponentialRampToValueAtTime(0.0001, t + PING.attack + PING.decay); // short, gentle exponential decay
+  osc.connect(env);
+  env.connect(sonarMaster);
+  if (sonarEchoIn) env.connect(sonarEchoIn);
+  osc.start(t);
+  osc.stop(t + PING.attack + PING.decay + 0.05);
+  osc.onended = () => { try { osc.disconnect(); env.disconnect(); } catch (e) { /* already gone */ } };
+}
+function restartAnim(el) {
+  if (!el || REDUCED_MOTION) return;
+  el.classList.remove('go');
+  void el.offsetWidth; // reflow so the CSS animation restarts
+  el.classList.add('go');
+}
+function sonarTick() {
+  if (document.hidden) return;
+  restartAnim($('scopeRing'));
+  restartAnim(document.getElementById('sonarRing'));
+  playPing();
+}
+function sweepIsAnimating() {
+  const el = $('scope');
+  if (!el.getAnimations) return !REDUCED_MOTION;
+  return el.getAnimations({ subtree: true }).some(a => a.animationName === 'sweep' && a.playState === 'running');
+}
+function stopFallbackClock() { clearTimeout(fallbackTimer); fallbackTimer = null; }
+function startFallbackClock() {
+  // Used only when the CSS sweep isn't running (e.g. reduced motion). Drift-corrected: next = t0 + n * period.
+  stopFallbackClock();
+  const period = sweepPeriodMs();
+  fallbackT0 = performance.now(); fallbackN = 0;
+  const step = () => {
+    fallbackN++;
+    sonarTick();
+    fallbackTimer = setTimeout(step, Math.max(0, fallbackT0 + (fallbackN + 1) * period - performance.now()));
+  };
+  fallbackTimer = setTimeout(step, period);
+}
+function updateSoundUi() {
+  const btn = $('soundBtn');
+  btn.setAttribute('aria-pressed', sonarEnabled && !sonarUnsupported ? 'true' : 'false');
+  btn.disabled = sonarUnsupported;
+  btn.title = sonarUnsupported ? 'Sound not supported in this browser' : (sonarEnabled ? 'Sonar sound on (tap to mute)' : 'Sonar sound off (tap to turn on)');
+  btn.setAttribute('aria-label', sonarEnabled ? 'Sonar sound on' : 'Sonar sound off');
+  const running = audioCtx && audioCtx.state === 'running';
+  $('sonarHint').hidden = !(sonarEnabled && !sonarUnsupported && !running && !document.hidden);
+}
+function setSonarEnabled(on) {
+  sonarEnabled = on;
+  try { localStorage.setItem(SONAR_KEY, on ? '1' : '0'); } catch (e) { /* not persisted */ }
+  if (on) startAudio();                       // the toggle click is itself a user gesture
+  else if (audioCtx && audioCtx.state === 'running') audioCtx.suspend().catch(() => {});
+  updateSoundUi();
+}
+function initSonar() {
+  // Map ring lives inside the Leaflet container, centred on the current view (i.e. on the selected town)
+  if (radarMap && !document.getElementById('sonarRing')) {
+    const ring = document.createElement('div');
+    ring.className = 'sonar-ring'; ring.id = 'sonarRing'; ring.setAttribute('aria-hidden', 'true');
+    radarMap.getContainer().appendChild(ring);
+  }
+  if (initSonar.done) return;
+  initSonar.done = true;
+  $('scope').addEventListener('animationiteration', e => { if (e.animationName === 'sweep') sonarTick(); });
+  if (!sweepIsAnimating()) startFallbackClock();
+  $('soundBtn').addEventListener('click', () => setSonarEnabled(!sonarEnabled));
+  const gesture = () => {
+    ['pointerdown', 'keydown', 'touchstart'].forEach(t => window.removeEventListener(t, gesture, true));
+    if (sonarEnabled) startAudio();
+  };
+  ['pointerdown', 'keydown', 'touchstart'].forEach(t => window.addEventListener(t, gesture, { capture: true, passive: true }));
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      stopFallbackClock();
+      if (audioCtx && audioCtx.state === 'running') audioCtx.suspend().catch(() => {});
+    } else {
+      if (sonarEnabled && audioCtx) audioCtx.resume().catch(() => {}).then(updateSoundUi);
+      if (!sweepIsAnimating()) startFallbackClock();
+    }
+    updateSoundUi();
+  });
+  updateSoundUi();
+}
+
+/* ---------- global safety nets: nothing fails silently ---------- */
+window.addEventListener('unhandledrejection', e => {
+  console.error('Unhandled rejection', e.reason);
+  setStatus('Unexpected error: ' + errText(e.reason) + '. Try Refresh.', 'error');
+});
+window.addEventListener('error', e => {
+  if (!e.message) return; // resource load errors (tiles) are handled elsewhere
+  setStatus('Script error: ' + e.message, 'error');
+});
+
+async function boot() {
+  tickClock();
+  setInterval(tickClock, 1000);
+  renderReadout();
+  wireUi();
+  try { initSonar(); } catch (e) { console.warn('Sonar init failed', e); }
+  activePlace = placeFromHash();
+  goToPlace(activePlace, { updateHash: false });
+  loadCurrent();                         // small + fast: TEMP / HUMIDITY first
+  loadTownSnow();                        // heavier snowfall history + forecast, independent
+  setInterval(loadCurrent, CUR_REFRESH_MS);
+  setInterval(loadTownSnow, SNOW_REFRESH_MS);
+  const catchUp = () => {
+    if (document.hidden) return;
+    if (Date.now() - curFetchedAt > CUR_REFRESH_MS) loadCurrent();
+    if (Date.now() - snowFetchedAt > SNOW_REFRESH_MS) loadTownSnow();
+  };
+  document.addEventListener('visibilitychange', catchUp);
+  window.addEventListener('online', () => { loadCurrent(); loadTownSnow(); });
+  setStatus('Loading map library…', 'loading');
+  let info;
+  try {
+    info = await loadLeaflet();
+  } catch (e) {
+    const msg = 'The map library (Leaflet) could not be loaded from unpkg.com or jsdelivr.net (' + e.message +
+      '). Check the internet connection or content blockers, then reload.';
+    const mm = $('mapMsg'); if (mm) mm.textContent = msg;
+    setStatus(msg, 'error');
+    return;
+  }
+  initMap();
+  try { initSonar(); } catch (e) { console.warn('Sonar ring init failed', e); }
+  goToPlace(activePlace, { updateHash: false, instant: true });
+  if (!info.cssOk) console.warn('Leaflet CSS failed to load from ' + info.host);
+  await applySource();
+}
+boot().catch(e => { console.error(e); setStatus('Startup failed: ' + errText(e), 'error'); });
+</script>
+</body>
+</html>
