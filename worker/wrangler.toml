@@ -1,0 +1,8 @@
+name = "alberta-plow-relay"
+main = "worker.js"
+compatibility_date = "2026-09-01"
+workers_dev = true
+preview_urls = false
+
+[observability]
+enabled = false

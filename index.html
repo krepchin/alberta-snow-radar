@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#05080f" />
-<title>Central Alberta Snow Radar — Sonar Console · v5.3</title>
+<title>Central Alberta Snow Radar — Sonar Console · v5.4</title>
 <script>document.documentElement.className += ' js';</script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -558,7 +558,7 @@
     .feed { padding: 0.35rem; }
   }
   @media (max-width: 400px) {
-    .h1-mid { display: none; }   /* "Snow Radar v5.3" on narrow phones rather than an ellipsis */
+    .h1-mid { display: none; }   /* "Snow Radar v5.4" on narrow phones rather than an ellipsis */
   }
   /* Desktop, tablet and landscape: map on the left, every panel in a scrolling side column (nothing floats on the map) */
   @media (min-width: 721px), (min-width: 560px) and (max-height: 500px) {
@@ -614,7 +614,7 @@
   <div class="brand">
     <div class="scope" id="scope" aria-hidden="true"><span class="scope-ring" id="scopeRing"></span></div>
     <div>
-      <div class="title-row"><h1><span class="h1-long">Central </span><span class="h1-mid">Alberta </span>Snow Radar</h1><span class="ver" title="Version 5.3">v5.3</span></div>
+      <div class="title-row"><h1><span class="h1-long">Central </span><span class="h1-mid">Alberta </span>Snow Radar</h1><span class="ver" title="Version 5.4">v5.4</span></div>
       <p class="sub">Live radar + model snowfall forecast</p>
     </div>
   </div>
@@ -747,11 +747,11 @@
       Town forecast: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> ·
       Plows &amp; road conditions: <a href="https://511.alberta.ca/" target="_blank" rel="noopener">511 Alberta</a> (unofficial use, may lag or break)<span id="baseAttrib"> ·
       Basemap: Esri World Dark Gray Canvas (Esri, HERE, Garmin, &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors, GIS user community)</span>.
-      Demo only — verify travel decisions on official sources. · v5.3
+      Demo only — verify travel decisions on official sources. · v5.4
     </p>
     <p class="attrib attr-short">
       Data: ECCC <a href="https://eccc-msc.github.io/open-data/msc-geomet/readme_en/" target="_blank" rel="noopener">MSC GeoMet</a> ·
-      <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> · plows: <a href="https://511.alberta.ca/" target="_blank" rel="noopener">511 Alberta</a> · basemap in map credits. Demo only · v5.3
+      <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> · plows: <a href="https://511.alberta.ca/" target="_blank" rel="noopener">511 Alberta</a> · basemap in map credits. Demo only · v5.4
     </p>
   </section>
   </div>
@@ -1766,9 +1766,12 @@ function initSonar() {
 /* ---------- v5.3: 511 Alberta snowplows + winter road conditions ----------
    data/plows.json (and data/roads.geojson) are generated server-side by the GitHub Actions workflow
    (511 has no CORS); this page only reads the static files from the same origin. */
-const PLOW_URL = 'data/plows.json';
+const PLOW_RELAY_URL = 'https://alberta-plow-relay.krepchin.workers.dev/plows';   // v5.4: live relay (Cloudflare Worker, see worker/)
+const PLOW_RELAY_TIMEOUT_MS = 6000;
+const PLOW_URL = 'data/plows.json';      // fallback: GitHub Actions copy (~5 min)
 const ROADS_URL = 'data/roads.geojson';
-const PLOW_REFRESH_MS = 150000;          // 2.5 min
+const PLOW_REFRESH_MS = 150000;          // 2.5 min (tab hidden)
+const PLOW_REFRESH_VISIBLE_MS = 60000;   // 1 min while the page is visible
 const PLOW_STALE_MIN = 20;
 const PLOW_COLOR = '#ff8a1f';
 const ROAD_COLORS = [                    // matched against Primary Condition text, first hit wins
@@ -1781,6 +1784,7 @@ const ROAD_COLORS = [                    // matched against Primary Condition te
 ];
 const ROAD_OTHER = '#94a3b8';
 let plowLayer = null, roadLayer = null, plowsOn = true, roadsOn = false;
+let plowSource = '';                     // 'live' (relay) or '5-min cache' (data/plows.json)
 let plowData = null, plowFetchedAt = 0, plowErr = '', roadsAvailable = false, roadsLoadedFor = '';
 const plowMarkers = {};
 
@@ -1834,10 +1838,10 @@ function renderPlowAge() {
   const n = (plowData.vehicles || []).length;
   if (!g) { el.textContent = 'Plows: ' + (plowData.status || plowData.error || 'no data published yet'); el.classList.add('bad'); return; }
   const stale = plowIsStale();
-  el.innerHTML = 'Plows updated ' + escHtml(fmtAge(g)) + ' · ' + n + ' in view' + (stale ? ' · <b>stale</b>' : '') +
+  el.innerHTML = 'Plows updated ' + escHtml(fmtAge(g)) + (plowSource ? ' (' + escHtml(plowSource) + ')' : '') + ' · ' + n + ' in view' + (stale ? ' · <b>stale</b>' : '') +
     (plowData.error ? ' · 511 error' : '') + (plowErr ? ' · refresh failed' : '');
   if (stale || plowData.error || plowErr) el.classList.add('stale');
-  el.title = 'Feed generated ' + fmtLocal(g) + ' · positions from 511 Alberta' + (plowData.error ? ' · ' + plowData.error : '');
+  el.title = 'Feed generated ' + fmtLocal(g) + ' · positions from 511 Alberta' + (plowSource === 'live' ? ' via live relay' : ' via GitHub 5-min copy') + (plowData.error ? ' · ' + plowData.error : '');
 }
 function renderPlows() {
   if (!radarMap || !plowLayer) return;
@@ -1864,11 +1868,21 @@ function renderPlows() {
     if (!seen.has(id)) { plowLayer.removeLayer(plowMarkers[id]); delete plowMarkers[id]; }
   });
 }
+async function fetchPlowJson(url, ms, needTime) {
+  const res = await fetchWithTimeout(url + '?t=' + Date.now(), ms);
+  const j = await res.json();
+  if (!j || typeof j !== 'object' || !Array.isArray(j.vehicles) || (needTime && !j.generated)) throw new Error('unexpected plows.json format');
+  return j;
+}
 async function loadPlows() {
+  plowFetchedAt = Date.now();             // marks the attempt so the refresh timer doesn't stack calls
   try {
-    const res = await fetchWithTimeout(PLOW_URL + '?t=' + Date.now());
-    const j = await res.json();
-    if (!j || typeof j !== 'object' || !Array.isArray(j.vehicles)) throw new Error('unexpected plows.json format');
+    let j = null;
+    if (PLOW_RELAY_URL) {
+      try { j = await fetchPlowJson(PLOW_RELAY_URL, PLOW_RELAY_TIMEOUT_MS, true); plowSource = 'live'; }
+      catch (e) { console.warn('Plow relay unavailable, using data/plows.json:', errText(e)); }
+    }
+    if (!j) { j = await fetchPlowJson(PLOW_URL); plowSource = '5-min cache'; }
     plowData = j; plowErr = '';
     roadsAvailable = !!j.roads;
   } catch (e) {
@@ -1948,10 +1962,12 @@ function initOverlays() {
   $('lyrPlows').onclick = () => setPlowsOn(!plowsOn);
   $('lyrRoads').onclick = () => setRoadsOn(!roadsOn);
   loadPlows();
-  setInterval(loadPlows, PLOW_REFRESH_MS);
+  setInterval(() => {                    // every 60 s while visible, every 2.5 min when hidden
+    if (Date.now() - plowFetchedAt >= (document.hidden ? PLOW_REFRESH_MS : PLOW_REFRESH_VISIBLE_MS) - 1000) loadPlows();
+  }, 15000);
   setInterval(renderPlowAge, 30000);
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && Date.now() - plowFetchedAt > PLOW_REFRESH_MS) loadPlows();
+    if (!document.hidden && Date.now() - plowFetchedAt > PLOW_REFRESH_VISIBLE_MS) loadPlows();
   });
   window.addEventListener('online', loadPlows);
 }
