@@ -1,0 +1,52 @@
+# PENDING: copy to .github/workflows/pages.yml (needs a token with the "workflow" scope or the GitHub web UI),
+# then switch Pages to "GitHub Actions": gh api -X PUT repos/krepchin/alberta-snow-radar/pages -f build_type=workflow
+
+name: Build & deploy Pages (site + 511 plow data)
+
+# Deploys the site files exactly as they sit in the repo root, plus freshly
+# fetched data/plows.json (and data/roads.geojson when the 511 key secret is set).
+# Data files are generated at deploy time and never committed.
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "*/5 * * * *"   # GitHub may delay/skip scheduled runs under load
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Copy site files (same files/paths as the old branch deploy)
+        run: |
+          mkdir -p _site
+          rsync -a --exclude '.git' --exclude '.github' --exclude '_site' ./ _site/
+          touch _site/.nojekyll
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Fetch 511 Alberta data
+        env:
+          ALBERTA_511_API_KEY: ${{ secrets.ALBERTA_511_API_KEY }}
+          OUT_DIR: _site/data
+        run: python3 scripts/fetch_511.py
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
