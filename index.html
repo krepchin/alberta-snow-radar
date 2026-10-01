@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#05080f" />
-<title>Central Alberta Snow Radar — Sonar Console · v5.1</title>
+<title>Central Alberta Snow Radar — Sonar Console · v5.2</title>
 <script>document.documentElement.className += ' js';</script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -326,17 +326,16 @@
   .fclink:hover { background: rgba(20, 224, 192, 0.2); box-shadow: var(--glow); }
   .fclink:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--cyan); }
   .fclink span { font-size: 0.9rem; line-height: 0; }
-  .leaflet-control.fc-ctl {
-    display: inline-flex; align-items: center; gap: 0.3rem; min-height: 44px; padding: 0 0.8rem; border-radius: 12px;
-    background: var(--glass-strong); border: 1px solid rgba(20, 224, 192, 0.55); color: #e9fffb !important; text-decoration: none;
-    font: 600 0.7rem/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase;
-    box-shadow: 0 0 14px rgba(20, 224, 192, 0.22), 0 8px 24px rgba(0,0,0,0.45); touch-action: manipulation;
+  .fclink { white-space: nowrap; flex: 0 0 auto; }
+  .fcbar {
+    flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem; min-height: 44px; padding: 0 0.85rem;
+    border-radius: 12px; border: 1px solid rgba(20, 224, 192, 0.55); background: rgba(20, 224, 192, 0.1);
+    color: #e9fffb; text-decoration: none; font: 600 0.7rem/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap;
+    box-shadow: 0 0 14px rgba(20, 224, 192, 0.2); touch-action: manipulation;
   }
-  .leaflet-control.fc-ctl span { font-size: 1rem; line-height: 0; }
-  .leaflet-control.fc-ctl:hover { box-shadow: var(--glow); }
-  @media (min-width: 721px) and (min-height: 501px) {
-    .leaflet-control.fc-ctl { display: none; }   /* desktop: the 7-day link sits in the town card */
-  }
+  .fcbar span { font-size: 1rem; line-height: 0; }
+  .fcbar:hover { background: rgba(20, 224, 192, 0.2); box-shadow: var(--glow); }
+  .fcbar:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--cyan); }
 
   /* Town snowfall forecast (Open-Meteo) */
   .snowcard { right: 14px; bottom: 62px; width: 350px; padding: 0.8rem 0.9rem; }
@@ -379,17 +378,21 @@
   .snownote { margin: 0.45rem 0 0; font: 500 0.66rem/1.4 var(--mono); color: var(--dim); }
   .snownote.error { color: var(--red); }
 
-  /* Legend control */
-  .legend-ctl { background: var(--glass-strong); border: 1px solid var(--line); border-radius: 12px; color: var(--text); box-shadow: 0 8px 24px rgba(0,0,0,0.45); }
-  .legend-ctl summary {
-    list-style: none; cursor: pointer; min-height: 44px; display: flex; align-items: center; justify-content: center;
-    padding: 0 0.8rem; font: 600 0.7rem/1 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted);
+  /* Legend + 7-day tool row (in the control panel, not on the map) */
+  .toolrow { display: flex; gap: 0.5rem; align-items: flex-start; }
+  .legend-box { flex: 1 1 auto; min-width: 0; border: 1px solid var(--line); border-radius: 12px; background: rgba(3, 7, 14, 0.6); color: var(--text); }
+  .legend-box summary {
+    list-style: none; cursor: pointer; min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+    padding: 0 0.8rem; font: 600 0.7rem/1 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); touch-action: manipulation;
   }
-  .legend-ctl summary::-webkit-details-marker { display: none; }
-  .legend-ctl[open] summary { color: var(--teal); }
-  .legend-ctl .lg-body { padding: 0 0.6rem 0.6rem; }
-  .legend-ctl img { display: block; max-height: 46vh; width: auto; background: #f1f5f9; border-radius: 8px; padding: 4px; }
-  .legend-ctl .lg-cap { font: 500 0.66rem/1.35 var(--mono); color: var(--muted); max-width: 150px; margin-top: 0.4rem; }
+  .legend-box summary::-webkit-details-marker { display: none; }
+  .legend-box summary:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--cyan); border-radius: 12px; }
+  .legend-box[open] summary { color: var(--teal); }
+  .legend-box .lg-chev { transition: transform .2s var(--ease); }
+  .legend-box[open] .lg-chev { transform: rotate(180deg); }
+  .legend-box .lg-body { padding: 0 0.6rem 0.6rem; }
+  .legend-box img { display: block; max-height: 46vh; max-width: 100%; width: auto; background: #f1f5f9; border-radius: 8px; padding: 4px; }
+  .legend-box .lg-cap { font: 500 0.66rem/1.35 var(--mono); color: var(--muted); margin-top: 0.4rem; }
 
   /* ---------- Leaflet skin ---------- */
   .leaflet-container { font: inherit; background: var(--bg2); }
@@ -437,12 +440,14 @@
     .townnav { padding: 0.4rem 0.5rem; gap: 4px; }
     .townnav a { font-size: 0.84rem; padding: 0.3rem 0.25rem; gap: 0.3rem; min-height: 46px; }
     .townnav .pin { display: none; }
-    .stage { display: flex; flex-direction: column; }
-    #radarMap { order: 1; position: relative; inset: auto; flex: 1 1 auto; min-height: 200px; }
+    .stage { display: flex; flex-direction: column; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; }
+    /* map fills the screen under the control bar; town card + status scroll in below it */
+    #radarMap { order: 1; position: relative; inset: auto; flex: 1 0 auto; min-height: 280px; min-height: max(280px, calc(100vh - 280px)); min-height: max(280px, calc(100svh - 280px)); }
     .stage::after { display: none; }
     .panel { position: relative; top: auto; left: auto; right: auto; bottom: auto; width: auto; border-radius: 0; border-left: 0; border-right: 0; animation: none; }
     .ctrl { order: 0; padding: 0.55rem 0.75rem; background: var(--glass-strong); }
-    .ctrl .group + .group { margin-top: 0.5rem; padding-top: 0.5rem; }
+    .ctrl .group + .group { margin-top: 0.4rem; padding-top: 0.4rem; }
+    .ctrl { padding-top: 0.45rem; padding-bottom: 0.45rem; }
     .ctrl .panel-title.hide-m { display: none; }
     .ctrl .panel-title { margin-bottom: 0.4rem; }
     .ts-card { margin-top: 0.4rem; padding: 0.4rem 0.6rem; display: flex; justify-content: space-between; align-items: baseline; gap: 0.2rem 0.5rem; flex-wrap: wrap; }
@@ -485,7 +490,19 @@
     .readout .panel-title, .readout dl { display: none; }
     .status { margin-top: 0; font-size: 0.7rem; }
     .attrib { margin-top: 0.3rem; font-size: 0.6rem; }
-    .legend-ctl img { max-height: 30vh; }
+    .legend-box img { max-height: 30vh; }
+    /* compact control bar: buttons and the scan/step time share one row */
+    .radar-sub.visible { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 8px; align-items: stretch; }
+    .radar-sub .panel-title { grid-column: 1 / -1; grid-row: 1; margin-bottom: 0; }
+    .radar-sub .row { grid-column: 1; grid-row: 2; }
+    .radar-sub .row .seg .btn { padding-left: 0.6rem; padding-right: 0.6rem; }
+    .radar-sub .transport { grid-column: 1; grid-row: 2; grid-template-columns: 44px auto 44px; }
+    .radar-sub .ticks { grid-column: 1 / -1; grid-row: 3; margin-top: 0; }
+    .radar-sub .ts-card, .ctrl .radar-sub .ts-card { grid-column: 2; grid-row: 2; margin: 0; padding: 0.3rem 0.55rem; display: flex; flex-direction: column; justify-content: center; gap: 0.1rem; min-width: 0; }
+    .radar-sub .ts-label { font-size: 0.56rem; letter-spacing: 0.12em; }
+    .radar-sub .radar-ts { font-size: 0.74rem; line-height: 1.2; overflow-wrap: anywhere; }
+    .radar-sub .ts-age { font-size: 0.64rem; width: auto; }
+    .toolrow .legend-box summary { min-height: 44px; }
   }
   @media (max-width: 440px) {
     .clock .date { display: none; }
@@ -501,40 +518,47 @@
   @media (min-width: 721px) {
     .snowgrid .cell { display: contents; }
   }
-  @media (min-width: 721px) and (max-height: 760px) {
-    .snowcard .fcpart .snowgrid, .snowcard .fcpart .snownote { display: none; }
-    .snowcard .fcpart .panel-title { margin: 0.6rem 0 0; }
-    .wx { margin-bottom: 0; padding-bottom: 0; border-bottom: 0; }
-  }
-  /* Short desktop screens: drop the detail rows so the readout never overlaps the control panel */
-  @media (min-width: 721px) and (max-height: 880px) {
-    .readout dl { display: none; }
-    .readout .panel-title { margin-bottom: 0.45rem; }
-  }
-  @media (min-width: 721px) and (max-height: 700px) {
-    .readout .panel-title { display: none; }
-    /* control panel ends ~445px down; keep the readout below it and let it scroll */
-    .readout { max-height: calc(100vh - 470px); min-height: 90px; overflow-y: auto; }
-  }
 
-  @media (max-width: 400px) {
-    .h1-mid { display: none; }   /* "Snow Radar v5.1" on narrow phones rather than an ellipsis */
+  @media (max-width: 340px) {   /* 320 px phones: keep the full "Snow Radar" title */
+    .hdr { padding-left: 0.5rem; padding-right: 0.5rem; gap: 0.35rem; }
+    .hdr-right { gap: 0.3rem; }
+    .scope { width: 24px; height: 24px; }
+    .brand { gap: 0.35rem; }
+    .clock .time { font-size: 0.8rem; }
+    .feed { padding: 0.35rem; }
   }
-  /* Landscape phones and other short-but-wide screens: map on the left, panels in a scrolling column */
+  @media (max-width: 400px) {
+    .h1-mid { display: none; }   /* "Snow Radar v5.2" on narrow phones rather than an ellipsis */
+  }
+  /* Desktop, tablet and landscape: map on the left, every panel in a scrolling side column (nothing floats on the map) */
+  @media (min-width: 721px), (min-width: 560px) and (max-height: 500px) {
+    :root { --side-w: 360px; }
+    .stage { display: block; overflow: visible; }
+    #radarMap { position: absolute; inset: 0; right: var(--side-w); min-height: 0; }
+    .stage::after { right: var(--side-w); }
+    .side { display: flex; flex-direction: column; gap: 10px; position: absolute; top: 0; right: 0; bottom: 0; width: var(--side-w);
+      overflow-y: auto; padding: 10px; padding-bottom: calc(10px + env(safe-area-inset-bottom)); background: var(--bg); border-left: 1px solid var(--line);
+      z-index: 1000; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+    .side .panel { position: relative; inset: auto; width: auto; max-height: none; min-height: 0; overflow: visible; animation: none; flex: 0 0 auto; padding: 0.8rem 0.9rem; }
+    .side .snowcard { order: -1; }
+    .side .wx { margin-bottom: 0.7rem; padding-bottom: 0.65rem; border-bottom: 1px dashed var(--line); }
+    .fcbar { display: none; }   /* the 7-day link sits in the town card title at the top of the side column */
+  }
+  @media (min-width: 1280px) { :root { --side-w: 384px; } }
+  /* small landscape phones (e.g. 667x375): narrower side column, rounded panels */
+  @media (max-width: 720px) and (min-width: 560px) and (max-height: 500px) {
+    :root { --side-w: 340px; }
+    .snowcard .fc-title { white-space: nowrap; letter-spacing: 0.08em; gap: 0.4rem; }
+    .side .panel { border-radius: 12px; border: 1px solid var(--line); padding: 0.55rem 0.7rem; }
+    .stage::after { display: block; }
+  }
+  /* Landscape phones and other short-but-wide screens: compact header */
   @media (min-width: 721px) and (max-height: 500px) {
     .hdr { padding-top: 0.35rem; padding-bottom: 0.35rem; }
     .brand .sub { display: none; }
     .townnav { padding-top: 0.3rem; padding-bottom: 0.3rem; }
     .townnav a { min-height: 44px; }
-    #radarMap { right: 366px; }
-    .stage::after { right: 366px; }
-    .side { display: flex; flex-direction: column; gap: 8px; position: absolute; top: 0; right: 0; bottom: 0; width: 366px;
-      overflow-y: auto; padding: 8px; background: var(--bg); z-index: 1000; -webkit-overflow-scrolling: touch; }
-    .side .panel { position: relative; inset: auto; width: auto; max-height: none; min-height: 0; overflow: visible; animation: none; flex: 0 0 auto; }
-    .side .snowcard { order: -1; }
-    .side .snowcard .fcpart { display: block; }
-    .side .wx { margin-bottom: 0.7rem; padding-bottom: 0.65rem; border-bottom: 1px dashed var(--line); }
-    .side .readout .panel-title { display: flex; }
+    .side { gap: 8px; padding: 8px; }
   }
 
   /* ---------- Reduced motion ---------- */
@@ -560,7 +584,7 @@
   <div class="brand">
     <div class="scope" id="scope" aria-hidden="true"><span class="scope-ring" id="scopeRing"></span></div>
     <div>
-      <div class="title-row"><h1><span class="h1-long">Central </span><span class="h1-mid">Alberta </span>Snow Radar</h1><span class="ver" title="Version 5.1">v5.1</span></div>
+      <div class="title-row"><h1><span class="h1-long">Central </span><span class="h1-mid">Alberta </span>Snow Radar</h1><span class="ver" title="Version 5.2">v5.2</span></div>
       <p class="sub">Live radar + model snowfall forecast</p>
     </div>
   </div>
@@ -633,6 +657,14 @@
         <div class="ts-age" id="fcAge"></div>
       </div>
     </div>
+
+    <div class="group toolrow">
+      <details class="legend-box" id="legendBox">
+        <summary>Legend <span class="lg-chev" aria-hidden="true">&#9662;</span></summary>
+        <div class="lg-body"><img alt="Legend" /><div class="lg-cap"></div></div>
+      </details>
+      <a class="fcbar" id="fcMapLink" href="forecast.html#three-hills" title="Open the 7-day forecast for each town">7-day forecast <span aria-hidden="true">&rsaquo;</span></a>
+    </div>
   </section>
 
   <section class="panel snowcard" aria-label="Town conditions and snowfall">
@@ -672,11 +704,11 @@
       Radar &amp; snowfall forecast: Environment and Climate Change Canada / <a href="https://eccc-msc.github.io/open-data/msc-geomet/readme_en/" target="_blank" rel="noopener">MSC GeoMet</a> ·
       Town forecast: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a><span id="baseAttrib"> ·
       Basemap: Esri World Dark Gray Canvas (Esri, HERE, Garmin, &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors, GIS user community)</span>.
-      Demo only — verify travel decisions on official sources. · v5.1
+      Demo only — verify travel decisions on official sources. · v5.2
     </p>
     <p class="attrib attr-short">
       Data: ECCC <a href="https://eccc-msc.github.io/open-data/msc-geomet/readme_en/" target="_blank" rel="noopener">MSC GeoMet</a> ·
-      <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> · basemap in map credits. Demo only · v5.1
+      <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> · basemap in map credits. Demo only · v5.2
     </p>
   </section>
   </div>
@@ -1507,34 +1539,9 @@ function initMap() {
   radarMap.getPane('labels').style.pointerEvents = 'none';
   useEsriBase();
   L.control.scale({ imperial: false, position: 'bottomright' }).addTo(radarMap);
-  // Legend (collapsible)
-  const Legend = L.Control.extend({
-    options: { position: 'topright' },
-    onAdd() {
-      const d = L.DomUtil.create('details', 'legend-ctl');
-      d.innerHTML = '<summary>Legend</summary><div class="lg-body"><img alt="Legend" /><div class="lg-cap"></div></div>';
-      legendImg = d.querySelector('img');
-      legendCap = d.querySelector('.lg-cap');
-      L.DomEvent.disableClickPropagation(d);
-      L.DomEvent.disableScrollPropagation(d);
-      return d;
-    }
-  });
-  new Legend().addTo(radarMap);
-  // Map button to the 7-day forecast page (phones / landscape; desktop uses the link in the town card)
-  const FcCtl = L.Control.extend({
-    options: { position: 'topleft' },
-    onAdd() {
-      const a = L.DomUtil.create('a', 'fc-ctl');
-      a.id = 'fcMapLink';
-      a.href = 'forecast.html#three-hills';
-      a.title = 'Open the 7-day forecast for each town';
-      a.innerHTML = '7-day forecast <span aria-hidden="true">›</span>';
-      L.DomEvent.disableClickPropagation(a);
-      return a;
-    }
-  });
-  new FcCtl().addTo(radarMap);
+  // Legend + 7-day button live in the control panel (off the map face) since v5.2
+  legendImg = document.querySelector('#legendBox img');
+  legendCap = document.querySelector('#legendBox .lg-cap');
   updateFcLink();
   TOWNS.forEach(t => {
     const m = L.circleMarker([t.lat, t.lon], { radius: 5, color: '#99f6e4', weight: 2, fillColor: '#19d3c5', fillOpacity: 0.95, className: 'town-dot' })
