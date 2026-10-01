@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#05080f" />
-<title>Central Alberta Snow Radar — Sonar Console · v5</title>
+<title>Central Alberta Snow Radar — Sonar Console · v5.1</title>
 <script>document.documentElement.className += ' js';</script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -316,6 +316,27 @@
   .attrib a { color: var(--cyan); text-decoration: none; }
   .attrib a:hover { text-decoration: underline; }
   .attr-short { display: none; }
+  /* link to the separate 7-day forecast page */
+  .fclink {
+    display: inline-flex; align-items: center; gap: 0.25rem; min-height: 30px; padding: 0 0.6rem; margin: -0.35rem 0;
+    border-radius: 8px; border: 1px solid rgba(20, 224, 192, 0.55); background: rgba(20, 224, 192, 0.1);
+    color: #e9fffb; text-decoration: none; font: 700 0.62rem/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase;
+    box-shadow: 0 0 10px rgba(20, 224, 192, 0.2); touch-action: manipulation;
+  }
+  .fclink:hover { background: rgba(20, 224, 192, 0.2); box-shadow: var(--glow); }
+  .fclink:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--cyan); }
+  .fclink span { font-size: 0.9rem; line-height: 0; }
+  .leaflet-control.fc-ctl {
+    display: inline-flex; align-items: center; gap: 0.3rem; min-height: 44px; padding: 0 0.8rem; border-radius: 12px;
+    background: var(--glass-strong); border: 1px solid rgba(20, 224, 192, 0.55); color: #e9fffb !important; text-decoration: none;
+    font: 600 0.7rem/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase;
+    box-shadow: 0 0 14px rgba(20, 224, 192, 0.22), 0 8px 24px rgba(0,0,0,0.45); touch-action: manipulation;
+  }
+  .leaflet-control.fc-ctl span { font-size: 1rem; line-height: 0; }
+  .leaflet-control.fc-ctl:hover { box-shadow: var(--glow); }
+  @media (min-width: 721px) and (min-height: 501px) {
+    .leaflet-control.fc-ctl { display: none; }   /* desktop: the 7-day link sits in the town card */
+  }
 
   /* Town snowfall forecast (Open-Meteo) */
   .snowcard { right: 14px; bottom: 62px; width: 350px; padding: 0.8rem 0.9rem; }
@@ -481,7 +502,8 @@
     .snowgrid .cell { display: contents; }
   }
   @media (min-width: 721px) and (max-height: 760px) {
-    .snowcard .fcpart { display: none; }
+    .snowcard .fcpart .snowgrid, .snowcard .fcpart .snownote { display: none; }
+    .snowcard .fcpart .panel-title { margin: 0.6rem 0 0; }
     .wx { margin-bottom: 0; padding-bottom: 0; border-bottom: 0; }
   }
   /* Short desktop screens: drop the detail rows so the readout never overlaps the control panel */
@@ -495,8 +517,8 @@
     .readout { max-height: calc(100vh - 470px); min-height: 90px; overflow-y: auto; }
   }
 
-  @media (max-width: 380px) {
-    .h1-mid { display: none; }   /* "Snow Radar v5" on the narrowest phones rather than an ellipsis */
+  @media (max-width: 400px) {
+    .h1-mid { display: none; }   /* "Snow Radar v5.1" on narrow phones rather than an ellipsis */
   }
   /* Landscape phones and other short-but-wide screens: map on the left, panels in a scrolling column */
   @media (min-width: 721px) and (max-height: 500px) {
@@ -538,7 +560,7 @@
   <div class="brand">
     <div class="scope" id="scope" aria-hidden="true"><span class="scope-ring" id="scopeRing"></span></div>
     <div>
-      <div class="title-row"><h1><span class="h1-long">Central </span><span class="h1-mid">Alberta </span>Snow Radar</h1><span class="ver" title="Version 5">v5</span></div>
+      <div class="title-row"><h1><span class="h1-long">Central </span><span class="h1-mid">Alberta </span>Snow Radar</h1><span class="ver" title="Version 5.1">v5.1</span></div>
       <p class="sub">Live radar + model snowfall forecast</p>
     </div>
   </div>
@@ -628,7 +650,7 @@
       <p class="wxnote" id="wxNote">Loading current conditions from Open-Meteo…</p>
     </div>
     <div class="fcpart">
-      <p class="panel-title">Town snowfall (cm) <span class="badge fcst">FORECAST</span></p>
+      <p class="panel-title fc-title">Town snowfall (cm) <span class="badge fcst">FORECAST</span><a class="fclink" id="fcLink" href="forecast.html#three-hills" title="Open the 7-day forecast for each town">7-day <span aria-hidden="true">›</span></a></p>
       <div class="snowgrid" id="snowGrid">
         <span class="h">Town</span><span class="h">Next 24 h</span><span class="h">7 days</span>
       </div>
@@ -650,11 +672,11 @@
       Radar &amp; snowfall forecast: Environment and Climate Change Canada / <a href="https://eccc-msc.github.io/open-data/msc-geomet/readme_en/" target="_blank" rel="noopener">MSC GeoMet</a> ·
       Town forecast: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a><span id="baseAttrib"> ·
       Basemap: Esri World Dark Gray Canvas (Esri, HERE, Garmin, &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors, GIS user community)</span>.
-      Demo only — verify travel decisions on official sources. · v5
+      Demo only — verify travel decisions on official sources. · v5.1
     </p>
     <p class="attrib attr-short">
       Data: ECCC <a href="https://eccc-msc.github.io/open-data/msc-geomet/readme_en/" target="_blank" rel="noopener">MSC GeoMet</a> ·
-      <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> · basemap in map credits. Demo only · v5
+      <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> · basemap in map credits. Demo only · v5.1
     </p>
   </section>
   </div>
@@ -1197,9 +1219,14 @@ function placeFromHash() {
   const h = (location.hash || '').replace('#', '').toLowerCase();
   return h === 'region' || TOWNS.some(t => t.id === h) ? h : 'region';
 }
+function updateFcLink() {
+  const href = 'forecast.html#' + (TOWNS.some(t => t.id === activePlace) ? activePlace : 'all');
+  ['fcLink', 'fcMapLink'].forEach(id => { const a = $(id); if (a) a.href = href; });
+}
 function goToPlace(id, opts) {
   opts = opts || {};
   activePlace = id;
+  updateFcLink();
   document.querySelectorAll('.townnav a').forEach(a => {
     const on = a.dataset.place === id;
     a.classList.toggle('active', on);
@@ -1494,6 +1521,21 @@ function initMap() {
     }
   });
   new Legend().addTo(radarMap);
+  // Map button to the 7-day forecast page (phones / landscape; desktop uses the link in the town card)
+  const FcCtl = L.Control.extend({
+    options: { position: 'topleft' },
+    onAdd() {
+      const a = L.DomUtil.create('a', 'fc-ctl');
+      a.id = 'fcMapLink';
+      a.href = 'forecast.html#three-hills';
+      a.title = 'Open the 7-day forecast for each town';
+      a.innerHTML = '7-day forecast <span aria-hidden="true">›</span>';
+      L.DomEvent.disableClickPropagation(a);
+      return a;
+    }
+  });
+  new FcCtl().addTo(radarMap);
+  updateFcLink();
   TOWNS.forEach(t => {
     const m = L.circleMarker([t.lat, t.lon], { radius: 5, color: '#99f6e4', weight: 2, fillColor: '#19d3c5', fillOpacity: 0.95, className: 'town-dot' })
       .bindTooltip(t.name, { permanent: true, direction: 'right', offset: [6, 0], className: 'town-label' })
