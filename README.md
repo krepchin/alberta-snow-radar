@@ -1,4 +1,4 @@
-# Central Alberta Snow Radar (v5.1)
+# Central Alberta Snow Radar (v5.2)
 
 Single-file web pages, no API keys, no build step:
 
