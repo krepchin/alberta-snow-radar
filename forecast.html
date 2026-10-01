@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#05080f" />
-<title>Central Alberta 7-Day Forecast · v5.1</title>
+<title>Central Alberta 7-Day Forecast · v5.2</title>
 <script>document.documentElement.className += ' js';</script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -54,8 +54,9 @@
   .js .nojs { display: none; }
 
   /* ---------- Header ---------- */
+  .topbar { position: sticky; top: 0; z-index: 20; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45); }
   .hdr {
-    position: sticky; top: 0; z-index: 20;
+    position: relative;
     display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
     padding: 0.55rem 1rem; padding-top: calc(0.55rem + env(safe-area-inset-top));
     padding-left: calc(1rem + env(safe-area-inset-left)); padding-right: calc(1rem + env(safe-area-inset-right));
@@ -101,10 +102,10 @@
 
   /* ---------- Town tabs ---------- */
   .townnav {
-    position: sticky; top: var(--hdr-h, 58px); z-index: 19;
+    position: relative;
     display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px;
     padding: 0.45rem 1rem; padding-left: calc(1rem + env(safe-area-inset-left)); padding-right: calc(1rem + env(safe-area-inset-right));
-    background: rgba(6, 11, 20, 0.97); border-bottom: 1px solid var(--line); box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+    background: rgba(6, 11, 20, 0.97); border-bottom: 1px solid var(--line);
   }
   .townnav a {
     display: flex; align-items: center; justify-content: center; gap: 0.4rem; min-height: 46px; padding: 0.35rem 0.4rem; border-radius: 11px;
@@ -247,11 +248,12 @@
   (previews in Google Drive, Files or Mail don’t run scripts).
 </div>
 
+<div class="topbar" id="topbar">
 <header class="hdr" id="hdr">
   <div class="brand">
     <div class="scope" aria-hidden="true"></div>
     <div>
-      <div class="title-row"><h1><span class="h1-long">Central Alberta </span>7-Day Forecast</h1><span class="ver" title="Version 5.1">v5.1</span></div>
+      <div class="title-row"><h1><span class="h1-long">Central Alberta </span>7-Day Forecast</h1><span class="ver" title="Version 5.2">v5.2</span></div>
       <p class="sub">Open-Meteo model forecast · by town</p>
     </div>
   </div>
@@ -266,6 +268,7 @@
   <a href="#stettler" data-place="stettler">Stettler</a>
   <a href="#all" data-place="all">All</a>
 </nav>
+</div>
 
 <main>
   <div class="status" id="status" data-state="loading" role="status" aria-live="polite">
@@ -279,7 +282,7 @@
     daily values in Mountain Time. Highs/lows °C · precipitation mm · snowfall cm · chance = max hourly probability of precipitation ·
     wind = max sustained and gusts at 10 m, km/h, with dominant direction. Model estimates, not an official forecast: check
     <a href="https://weather.gc.ca/" target="_blank" rel="noopener">Environment Canada</a> for warnings. ·
-    <a href="./" id="footRadar">Back to the snow radar</a> · v5.1
+    <a href="./" id="footRadar">Back to the snow radar</a> · v5.2
   </p>
 </main>
 
@@ -568,7 +571,7 @@ function applyView() {
   $('backLink').href = './' + radarHash;
   $('footRadar').href = './' + radarHash;
   const tn = TOWNS.find(t => t.id === view);
-  document.title = (tn ? tn.name + ' 7-Day Forecast' : 'Central Alberta 7-Day Forecast') + ' · v5.1';
+  document.title = (tn ? tn.name + ' 7-Day Forecast' : 'Central Alberta 7-Day Forecast') + ' · v5.2';
 }
 function viewFromHash() {
   const h = (location.hash || '').replace('#', '').toLowerCase();
@@ -577,7 +580,7 @@ function viewFromHash() {
 }
 
 /* ---------- boot ---------- */
-function syncHeaderHeight() { document.documentElement.style.setProperty('--hdr-h', $('hdr').offsetHeight + 'px'); }
+function syncHeaderHeight() { document.documentElement.style.setProperty('--hdr-h', $('topbar').offsetHeight + 'px'); }
 window.addEventListener('hashchange', () => { view = viewFromHash(); applyView(); window.scrollTo(0, 0); });
 window.addEventListener('resize', syncHeaderHeight);
 $('retryBtn').addEventListener('click', () => load());
