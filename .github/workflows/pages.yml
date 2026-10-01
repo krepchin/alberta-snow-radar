@@ -7,7 +7,7 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: "*/10 * * * *"   # GitHub may delay/skip scheduled runs under load
+    - cron: "*/5 * * * *"   # GitHub may delay/skip scheduled runs under load
   workflow_dispatch:
 
 permissions:
