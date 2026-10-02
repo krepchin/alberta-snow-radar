@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#05080f" />
-<title>Central Alberta Snow Radar — Sonar Console · v5.4</title>
+<title>Central Alberta Snow Radar — Sonar Console · v5.5</title>
 <script>document.documentElement.className += ' js';</script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -423,6 +423,8 @@
   .leaflet-tooltip.town-label.on { border-color: var(--teal); color: #e9fffb; box-shadow: 0 0 12px rgba(20,224,192,0.6); }
   .leaflet-tooltip.town-label::before { display: none; }
   .town-dot { filter: drop-shadow(0 0 4px rgba(25, 211, 197, 0.9)); }
+  /* v5.5: road lines overlay — light, slightly glowing lines over the unchanged dark base */
+  .road-lines { filter: grayscale(0.4) brightness(1.5) contrast(1.45) drop-shadow(0 0 1px rgba(255, 240, 210, 0.6)); }
   .osm-dark { filter: invert(1) hue-rotate(180deg) brightness(0.82) contrast(0.92) saturate(0.35); }
 
   /* ---------- Mobile: panels dock above/below the map ---------- */
@@ -441,6 +443,8 @@
   .ovl-age .src { color: var(--dim); }
   .road-key { display: flex; flex-wrap: wrap; gap: 0.25rem 0.6rem; margin-top: 0.4rem; font: 500 0.62rem/1.2 var(--mono); color: var(--muted); }
   .road-key[hidden] { display: none; }
+  .plow-key { display: flex; flex-wrap: wrap; gap: 0.2rem 0.7rem; margin-top: 0.35rem; font: 500 0.62rem/1.2 var(--mono); color: var(--muted); }
+  .plow-key i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 0.3rem; vertical-align: -1px; box-shadow: 0 0 0 1px rgba(0,0,0,0.6); }
   .road-key i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; margin-right: 0.3rem; vertical-align: middle; }
   .plow-ic { background: none; border: 0; }
   .plow-ic svg { display: block; width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 0 2px rgba(0,0,0,0.9)); }
@@ -558,7 +562,7 @@
     .feed { padding: 0.35rem; }
   }
   @media (max-width: 400px) {
-    .h1-mid { display: none; }   /* "Snow Radar v5.4" on narrow phones rather than an ellipsis */
+    .h1-mid { display: none; }   /* "Snow Radar v5.5" on narrow phones rather than an ellipsis */
   }
   /* Desktop, tablet and landscape: map on the left, every panel in a scrolling side column (nothing floats on the map) */
   @media (min-width: 721px), (min-width: 560px) and (max-height: 500px) {
@@ -614,7 +618,7 @@
   <div class="brand">
     <div class="scope" id="scope" aria-hidden="true"><span class="scope-ring" id="scopeRing"></span></div>
     <div>
-      <div class="title-row"><h1><span class="h1-long">Central </span><span class="h1-mid">Alberta </span>Snow Radar</h1><span class="ver" title="Version 5.4">v5.4</span></div>
+      <div class="title-row"><h1><span class="h1-long">Central </span><span class="h1-mid">Alberta </span>Snow Radar</h1><span class="ver" title="Version 5.5">v5.5</span></div>
       <p class="sub">Live radar + model snowfall forecast</p>
     </div>
   </div>
@@ -697,6 +701,7 @@
         </div>
         <p class="ovl-age" id="plowAge" role="status" aria-live="polite">Plows: loading…</p>
       </div>
+      <div class="plow-key" id="plowKey" aria-label="Plow colours by operator"><span><i style="background:#2f8cff"></i>Mainroad</span><span><i style="background:#ff8a1f"></i>MCON</span><span><i style="background:#9ca3af"></i>other</span></div>
       <div class="road-key" id="roadKey" hidden></div>
     </div>
 
@@ -746,12 +751,12 @@
       Radar &amp; snowfall forecast: Environment and Climate Change Canada / <a href="https://eccc-msc.github.io/open-data/msc-geomet/readme_en/" target="_blank" rel="noopener">MSC GeoMet</a> ·
       Town forecast: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> ·
       Plows &amp; road conditions: <a href="https://511.alberta.ca/" target="_blank" rel="noopener">511 Alberta</a> (unofficial use, may lag or break)<span id="baseAttrib"> ·
-      Basemap: Esri World Dark Gray Canvas (Esri, HERE, Garmin, &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors, GIS user community)</span>.
-      Demo only — verify travel decisions on official sources. · v5.4
+      Basemap: Esri World Dark Gray Canvas + World Transportation roads (Esri, HERE, Garmin, &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors, GIS user community)</span>.
+      Demo only — verify travel decisions on official sources. · v5.5
     </p>
     <p class="attrib attr-short">
       Data: ECCC <a href="https://eccc-msc.github.io/open-data/msc-geomet/readme_en/" target="_blank" rel="noopener">MSC GeoMet</a> ·
-      <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> · plows: <a href="https://511.alberta.ca/" target="_blank" rel="noopener">511 Alberta</a> · basemap in map credits. Demo only · v5.4
+      <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> · plows: <a href="https://511.alberta.ca/" target="_blank" rel="noopener">511 Alberta</a> · basemap in map credits. Demo only · v5.5
     </p>
   </section>
   </div>
@@ -946,10 +951,21 @@ function trackBase(layer) {
 }
 function useEsriBase() {
   baseName = 'Esri Dark Gray';
-  const base = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', { maxZoom: 16, attribution: ESRI_ATTR });
+  const base = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', { maxZoom: 16, zIndex: -1, attribution: ESRI_ATTR });
   const labels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', { maxZoom: 16, pane: 'labels' });
   baseLayers = [trackBase(base), trackBase(labels)];
   baseLayers.forEach(l => l.addTo(radarMap));
+  addRoadLines();
+}
+/* v5.5: brighter highways. Esri World Transportation reference tiles (transparent roads only, no key) sit in the
+   tile pane between the dark base (zIndex -1) and the radar/forecast WMS (default zIndex 1); a CSS filter on this
+   layer only (.road-lines) lightens and thickens the lines. The background tiles are untouched. */
+let roadLinesLayer = null;
+function addRoadLines() {
+  roadLinesLayer = L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 16, zIndex: 0, className: 'road-lines',
+    attribution: 'Roads: <a href="https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer">Esri World Transportation</a>'
+  }).addTo(radarMap);
 }
 function useOsmDarkBase() {
   baseName = 'OSM (dark filter)';
@@ -963,6 +979,7 @@ function maybeFallbackBase() {
   baseFellBack = true;
   console.warn('Esri basemap failed; falling back to OSM dark filter');
   baseLayers.forEach(l => radarMap.removeLayer(l));
+  if (roadLinesLayer) { radarMap.removeLayer(roadLinesLayer); roadLinesLayer = null; }   // OSM fallback already shows roads
   readout.baseOk = 0; readout.baseFail = 0;
   useOsmDarkBase();
   renderReadout();
@@ -1766,14 +1783,23 @@ function initSonar() {
 /* ---------- v5.3: 511 Alberta snowplows + winter road conditions ----------
    data/plows.json (and data/roads.geojson) are generated server-side by the GitHub Actions workflow
    (511 has no CORS); this page only reads the static files from the same origin. */
-const PLOW_RELAY_URL = 'https://alberta-plow-relay.krepchin.workers.dev/plows';   // v5.4: live relay (Cloudflare Worker, see worker/)
+const PLOW_RELAY_URL = 'https://alberta-plow-relay.krepchin.workers.dev/plows';   // v5.5: live relay (Cloudflare Worker, see worker/)
 const PLOW_RELAY_TIMEOUT_MS = 6000;
 const PLOW_URL = 'data/plows.json';      // fallback: GitHub Actions copy (~5 min)
 const ROADS_URL = 'data/roads.geojson';
 const PLOW_REFRESH_MS = 150000;          // 2.5 min (tab hidden)
 const PLOW_REFRESH_VISIBLE_MS = 60000;   // 1 min while the page is visible
 const PLOW_STALE_MIN = 20;
-const PLOW_COLOR = '#ff8a1f';
+const PLOW_COLOR = '#ff8a1f';           // MCON (Emcon Services) keeps the original orange
+const PLOW_OWNER_COLORS = [              // v5.5: colour by operator (owner from the 511 tooltip), case-insensitive
+  [/mainroad/i, '#2f8cff', 'Mainroad'],
+  [/mcon/i, PLOW_COLOR, 'MCON'],         // matches "Emcon Services Inc."
+];
+const PLOW_OTHER_COLOR = '#9ca3af';      // any other / unknown owner
+function plowColor(owner) {
+  const hit = PLOW_OWNER_COLORS.find(([re]) => re.test(owner || ''));
+  return hit ? hit[1] : PLOW_OTHER_COLOR;
+}
 const ROAD_COLORS = [                    // matched against Primary Condition text, first hit wins
   [/clos|impass/i, '#ef4444', 'Closed / impassable'],
   [/ice|icy/i, '#d946ef', 'Icy'],
@@ -1804,6 +1830,7 @@ function plowIsStale() {
 }
 function plowIcon(v, stale) {
   const known = typeof v.heading === 'number' && isFinite(v.heading);
+  const PLOW_COLOR = plowColor(v.owner);   // shadows the constant: per-operator fill
   const svg = known
     // arrow pointing up, rotated to the heading (0 = north, clockwise)
     ? '<svg viewBox="-12 -12 24 24" style="transform:rotate(' + v.heading + 'deg)"><path d="M0 -10 L7.5 8 L0 3.6 L-7.5 8 Z" fill="' + PLOW_COLOR + '" stroke="#1a0b00" stroke-width="1.6" stroke-linejoin="round"/></svg>'
