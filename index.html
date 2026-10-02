@@ -701,7 +701,7 @@
         </div>
         <p class="ovl-age" id="plowAge" role="status" aria-live="polite">Plows: loading…</p>
       </div>
-      <div class="plow-key" id="plowKey" aria-label="Plow colours by operator"><span><i style="background:#2f8cff"></i>Mainroad</span><span><i style="background:#ff8a1f"></i>MCON</span><span><i style="background:#9ca3af"></i>other</span></div>
+      <div class="plow-key" id="plowKey" aria-label="Plow colours by operator"><span><i style="background:#2f8cff"></i>Mainroad</span><span><i style="background:#ff8a1f"></i>Emcon</span><span><i style="background:#9ca3af"></i>other</span></div>
       <div class="road-key" id="roadKey" hidden></div>
     </div>
 
@@ -1793,7 +1793,7 @@ const PLOW_STALE_MIN = 20;
 const PLOW_COLOR = '#ff8a1f';           // MCON (Emcon Services) keeps the original orange
 const PLOW_OWNER_COLORS = [              // v5.5: colour by operator (owner from the 511 tooltip), case-insensitive
   [/mainroad/i, '#2f8cff', 'Mainroad'],
-  [/mcon/i, PLOW_COLOR, 'MCON'],         // matches "Emcon Services Inc."
+  [/mcon/i, PLOW_COLOR, 'Emcon'],         // matches "Emcon Services Inc."
 ];
 const PLOW_OTHER_COLOR = '#9ca3af';      // any other / unknown owner
 function plowColor(owner) {
