@@ -24,6 +24,7 @@ LIVE = "https://krepchin.github.io/alberta-snow-radar/data/"
 LAT0, LAT1, LON0, LON1 = 51.0, 52.8, -114.5, -111.5
 # Slightly larger box for roads so lines don't stop at the screen edge
 RLAT0, RLAT1, RLON0, RLON1 = 50.7, 53.1, -115.0, -111.0
+SIMPLIFY_DEG = 0.0002  # Douglas-Peucker tolerance for road lines (~15-22 m); same as worker/worker.js
 MAX_TIPS = 45
 TIP_GAP = 0.7  # seconds between tooltip requests
 MT = ZoneInfo("America/Edmonton")
@@ -161,6 +162,32 @@ def decode_polyline(s, precision=5):
     return coords
 
 
+def simplify(pts, tol=SIMPLIFY_DEG):
+    """Douglas-Peucker (planar, degrees) - same algorithm as simplifyFlat() in worker/worker.js."""
+    n = len(pts)
+    if n < 3 or not tol:
+        return pts
+    keep = [False] * n
+    keep[0] = keep[-1] = True
+    stack, t2 = [(0, n - 1)], tol * tol
+    while stack:
+        a, b = stack.pop()
+        ax, ay = pts[a]
+        dx, dy = pts[b][0] - ax, pts[b][1] - ay
+        L = dx * dx + dy * dy
+        max_d, idx = -1.0, -1
+        for k in range(a + 1, b):
+            px, py = pts[k][0] - ax, pts[k][1] - ay
+            d = px * px + py * py if L == 0 else (dx * py - dy * px) ** 2 / L
+            if d > max_d:
+                max_d, idx = d, k
+        if max_d > t2:
+            keep[idx] = True
+            stack.append((a, idx))
+            stack.append((idx, b))
+    return [p for p, k in zip(pts, keep) if k]
+
+
 def roads(key):
     try:
         st, body = get(ROADS.format(key=key), timeout=40)
@@ -180,7 +207,7 @@ def roads(key):
         for p in polys:
             c = decode_polyline(p or "")
             if len(c) >= 2 and any(RLAT0 <= y <= RLAT1 and RLON0 <= x <= RLON1 for x, y in c):
-                lines.append(c)
+                lines.append(simplify(c))
         if not lines:
             continue
         cond = r.get("Primary Condition") or r.get("PrimaryCondition") or "Unknown"
@@ -189,6 +216,8 @@ def roads(key):
         if isinstance(sec, str):
             sec = [sec]
         lu = r.get("LastUpdated")
+        if isinstance(lu, str) and lu.isdigit():
+            lu = int(lu)
         feats.append({"type": "Feature",
                       "geometry": {"type": "MultiLineString", "coordinates": lines},
                       "properties": {"id": r.get("Id"), "road": r.get("RoadwayName"),

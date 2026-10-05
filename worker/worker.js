@@ -1,6 +1,9 @@
 /**
  * alberta-plow-relay — Cloudflare Worker
  *
+ * GET /roads  → 511 Alberta winter road conditions (developer API v3, key in the Worker secret
+ *               ALBERTA_511_API_KEY), decoded + clipped to Central Alberta, same GeoJSON shape as the
+ *               site's data/roads.geojson. Cached ~3 min.
  * GET /plows  → live 511 Alberta snowplow positions for Central Alberta, same JSON shape as the
  *               site's data/plows.json, so https://krepchin.github.io/alberta-snow-radar/ can show
  *               current positions the moment it opens (511 sends no CORS headers, so the page
@@ -28,6 +31,13 @@ const TIP_CONCURRENCY = 4;
 const FEED_TIMEOUT = 8000, TIP_TIMEOUT = 4000, GH_TIMEOUT = 4000;
 const RESP_KEY = 'https://alberta-plow-relay.cache/plows/v1';
 const TIPS_KEY = 'https://alberta-plow-relay.cache/tips/v1';
+// Winter road conditions (developer API; key only ever read from env, never echoed)
+const ROADS_API = 'https://511.alberta.ca/api/v3/get/winterroads?format=json&lang=en&key=';
+const RBOX = { lat0: 50.7, lat1: 53.1, lon0: -115.0, lon1: -111.0 };   // = RLAT0/1, RLON0/1 in scripts/fetch_511.py
+const ROADS_TTL = 180;            // s
+const ROADS_TIMEOUT = 15000;
+const ROADS_KEY = 'https://alberta-plow-relay.cache/roads/v1';
+const SIMPLIFY_DEG = 0.0002;      // Douglas-Peucker tolerance, ~15-22 m (same as scripts/fetch_511.py)
 const ALLOWED_ORIGINS = [/^https:\/\/krepchin\.github\.io$/, /^http:\/\/localhost(:\d+)?$/, /^http:\/\/127\.0\.0\.1(:\d+)?$/];
 
 let memTips = null;               // { id: { owner, type, updated, updated_text, t } } — per isolate
@@ -40,9 +50,11 @@ export default {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...cors, 'Access-Control-Max-Age': '86400' } });
     if (request.method !== 'GET' && request.method !== 'HEAD') return json({ error: 'method not allowed' }, 405, cors);
     if (url.pathname === '/' || url.pathname === '') {
-      return new Response('alberta-plow-relay: GET /plows (511 Alberta snowplows, Central Alberta). Data: 511 Alberta.\n',
+      return new Response('alberta-plow-relay: GET /plows (511 Alberta snowplows, Central Alberta) · ' +
+        'GET /roads (511 Alberta winter road conditions, Central Alberta, GeoJSON). Data: 511 Alberta.\n',
         { headers: { 'Content-Type': 'text/plain; charset=utf-8', ...cors } });
     }
+    if (url.pathname === '/roads') return handleRoads(env, ctx, cors);
     if (url.pathname !== '/plows') return json({ error: 'not found' }, 404, cors);
 
     const cache = caches.default;
@@ -51,7 +63,7 @@ export default {
 
     let body;
     try {
-      body = await buildPlows(cache, ctx);
+      body = await buildPlows(cache, ctx, env);
     } catch (e) {
       return json({ generated: null, source: '511 Alberta', relay: 'live', error: '511 feed unavailable: ' + String(e && e.message || e).slice(0, 200), vehicles: [] }, 502,
         { ...cors, 'Cache-Control': 'no-store' });
@@ -96,7 +108,7 @@ async function getText(url, ms, accept) {
   return new TextDecoder('utf-8').decode(buf);
 }
 
-async function buildPlows(cache, ctx) {
+async function buildPlows(cache, ctx, env) {
   const fetched = nowIso();
   // feed + GitHub data in parallel (GitHub is optional)
   const [feedTxt, gh] = await Promise.all([
@@ -176,7 +188,7 @@ async function buildPlows(cache, ctx) {
     bbox: [BOX.lat0, BOX.lon0, BOX.lat1, BOX.lon1],
     total_alberta: items.length, total: vehicles.length, tooltips: withTip, tooltips_fetched: fetchedTips,
     icons, vehicles,
-    roads: !!(gh && gh.roads), roads_generated: (gh && gh.roads_generated) || null
+    ...(await roadsMeta(cache, env, gh))
   };
 }
 
@@ -218,4 +230,120 @@ function edmontonWall(t) {
   new Intl.DateTimeFormat('en-US', { timeZone: 'America/Edmonton', hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' })
     .formatToParts(new Date(t)).forEach(x => { p[x.type] = x.value; });
   return Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour) % 24, Number(p.minute));
+}
+
+/* ---------- /roads ---------- */
+/** roads flag for /plows: true whenever the relay can serve /roads (key present) or GitHub has a file. */
+async function roadsMeta(cache, env, gh) {
+  const ghMeta = { roads: !!(gh && gh.roads), roads_generated: (gh && gh.roads_generated) || null };
+  if (!env || !env.ALBERTA_511_API_KEY) return ghMeta;
+  const hit = await cache.match(ROADS_KEY).catch(() => null);
+  const gen = hit && hit.headers.get('X-Roads-Generated');
+  return { roads: true, roads_generated: gen || ghMeta.roads_generated, roads_relay: true };
+}
+
+async function handleRoads(env, ctx, cors) {
+  const cache = caches.default;
+  const hit = await cache.match(ROADS_KEY).catch(() => null);
+  if (hit) return withHeaders(hit, { ...cors, 'X-Relay-Cache': 'HIT' });
+  const key = env && env.ALBERTA_511_API_KEY;
+  const fail = (msg) => json({ type: 'FeatureCollection', generated: null, source: '511 Alberta', error: msg, features: [] }, 502,
+    { ...cors, 'Cache-Control': 'no-store' });
+  if (!key) return fail('road conditions not configured (missing API key)');
+  let rows;
+  try {
+    const txt = await getText(ROADS_API + encodeURIComponent(key), ROADS_TIMEOUT);
+    rows = JSON.parse(txt);
+    if (!Array.isArray(rows)) throw new Error('unexpected response shape');
+  } catch (e) {
+    // never echo the request URL (it carries the key)
+    const msg = String(e && e.message || e).split(key).join('***').replace(/https?:\/\/\S+/g, '[url]').slice(0, 160);
+    return fail('511 road conditions unavailable: ' + msg);
+  }
+  const body = buildRoads(rows);
+  const res = json(body, 200, { 'Cache-Control': `public, max-age=${ROADS_TTL}`, 'X-Roads-Generated': body.generated });
+  ctx.waitUntil(cache.put(ROADS_KEY, res.clone()).catch(() => {}));
+  return withHeaders(res, { ...cors, 'X-Relay-Cache': 'MISS', 'Access-Control-Expose-Headers': 'X-Relay-Cache, X-Roads-Generated' });
+}
+
+/** Same output as scripts/fetch_511.py roads(): MultiLineString per segment, kept if any vertex is in RBOX. */
+function buildRoads(rows) {
+  const feats = [], conds = {};
+  const LAT0 = Math.round(RBOX.lat0 * 1e5), LAT1 = Math.round(RBOX.lat1 * 1e5), LON0 = Math.round(RBOX.lon0 * 1e5), LON1 = Math.round(RBOX.lon1 * 1e5), M = 100000;
+  for (const r of rows) {
+    let polys = r.EncodedPolyline || [];
+    if (typeof polys === 'string') polys = [polys];
+    const lines = [];
+    for (const p of polys) {
+      if (!p || typeof p !== 'string') continue;
+      const f0 = decodeFlat(p, 1);   // cheap pre-filter: first vertex more than ~1° (≈110 km) outside the box → skip
+      if (f0.length < 2 || f0[1] < LAT0 - M || f0[1] > LAT1 + M || f0[0] < LON0 - M || f0[0] > LON1 + M) continue;
+      const f = decodeFlat(p);
+      if (f.length < 4) continue;
+      let inside = false;
+      for (let k = 0; k < f.length; k += 2) {
+        const x = f[k], y = f[k + 1];
+        if (y >= LAT0 && y <= LAT1 && x >= LON0 && x <= LON1) { inside = true; break; }
+      }
+      if (inside) lines.push(simplifyFlat(f, SIMPLIFY_DEG));
+    }
+    if (!lines.length) continue;
+    const cond = r['Primary Condition'] || r.PrimaryCondition || 'Unknown';
+    conds[cond] = (conds[cond] || 0) + 1;
+    let sec = r['Secondary Conditions'] || r.SecondaryConditions || [];
+    if (typeof sec === 'string') sec = [sec];
+    const lu = Number(r.LastUpdated);
+    feats.push({
+      type: 'Feature',
+      geometry: { type: 'MultiLineString', coordinates: lines },
+      properties: {
+        id: r.Id, road: r.RoadwayName, location: r.LocationDescription, area: r.AreaName, condition: cond,
+        secondary: sec, visibility: r.Visibility,
+        updated: isFinite(lu) && lu > 0 ? new Date(lu * 1000).toISOString().replace('.000Z', 'Z') : null
+      }
+    });
+  }
+  return { type: 'FeatureCollection', generated: nowIso(), source: '511 Alberta', relay: 'live', total_alberta: rows.length, conditions: conds, features: feats };
+}
+/** Douglas-Peucker line simplification on a flat integer array [lng,lat,lng,lat,...] (1e-5 degree units);
+ *  same algorithm/tolerance as simplify() in fetch_511.py. Returns [[lon, lat], ...] for kept vertices. */
+function simplifyFlat(f, tol) {
+  const n = f.length >> 1;
+  const out = [];
+  if (n === 0) return out;
+  const keep = new Uint8Array(n); keep[0] = keep[n - 1] = 1;
+  const t = tol * 1e5, t2 = t * t;
+  const stack = n > 2 && tol ? [0, n - 1] : [];
+  if (!tol) keep.fill(1);
+  while (stack.length) {
+    const b = stack.pop(), a = stack.pop();
+    const ax = f[2 * a], ay = f[2 * a + 1], dx = f[2 * b] - ax, dy = f[2 * b + 1] - ay, L = dx * dx + dy * dy;
+    let maxD = -1, idx = -1;
+    for (let k = a + 1; k < b; k++) {
+      const px = f[2 * k] - ax, py = f[2 * k + 1] - ay;
+      let d;
+      if (L === 0) d = px * px + py * py;
+      else { const c = dx * py - dy * px; d = c * c / L; }
+      if (d > maxD) { maxD = d; idx = k; }
+    }
+    if (maxD > t2) { keep[idx] = 1; stack.push(a, idx, idx, b); }
+  }
+  for (let k = 0; k < n; k++) if (keep[k]) out.push([f[2 * k] / 1e5, f[2 * k + 1] / 1e5]);
+  return out;
+}
+/** Google encoded polyline (precision 5) → flat [lng,lat,...] integers (1e-5 deg); same decoding as decode_polyline() in fetch_511.py. */
+function decodeFlat(s, maxPts = Infinity) {
+  const f = [];
+  let i = 0, lat = 0, lng = 0;
+  const n = s.length;
+  while (i < n && (f.length >> 1) < maxPts) {
+    let shift = 0, result = 0, b;
+    do { if (i >= n) return f; b = s.charCodeAt(i++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    const dLat = result & 1 ? ~(result >> 1) : result >> 1;
+    shift = 0; result = 0;
+    do { if (i >= n) return f; b = s.charCodeAt(i++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    lat += dLat; lng += result & 1 ? ~(result >> 1) : result >> 1;
+    f.push(lng, lat);
+  }
+  return f;
 }

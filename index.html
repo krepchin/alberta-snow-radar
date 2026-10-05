@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#05080f" />
-<title>Central Alberta Snow Radar — Sonar Console · v5.5</title>
+<title>Central Alberta Snow Radar — Sonar Console · v5.6</title>
 <script>document.documentElement.className += ' js';</script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -443,6 +443,7 @@
   .ovl-age .src { color: var(--dim); }
   .road-key { display: flex; flex-wrap: wrap; gap: 0.25rem 0.6rem; margin-top: 0.4rem; font: 500 0.62rem/1.2 var(--mono); color: var(--muted); }
   .road-key[hidden] { display: none; }
+  .road-key .src { color: var(--dim); flex-basis: 100%; }
   .plow-key { display: flex; flex-wrap: wrap; gap: 0.2rem 0.7rem; margin-top: 0.35rem; font: 500 0.62rem/1.2 var(--mono); color: var(--muted); }
   .plow-key i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 0.3rem; vertical-align: -1px; box-shadow: 0 0 0 1px rgba(0,0,0,0.6); }
   .road-key i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; margin-right: 0.3rem; vertical-align: middle; }
@@ -562,7 +563,7 @@
     .feed { padding: 0.35rem; }
   }
   @media (max-width: 400px) {
-    .h1-mid { display: none; }   /* "Snow Radar v5.5" on narrow phones rather than an ellipsis */
+    .h1-mid { display: none; }   /* "Snow Radar v5.6" on narrow phones rather than an ellipsis */
   }
   /* Desktop, tablet and landscape: map on the left, every panel in a scrolling side column (nothing floats on the map) */
   @media (min-width: 721px), (min-width: 560px) and (max-height: 500px) {
@@ -618,7 +619,7 @@
   <div class="brand">
     <div class="scope" id="scope" aria-hidden="true"><span class="scope-ring" id="scopeRing"></span></div>
     <div>
-      <div class="title-row"><h1><span class="h1-long">Central </span><span class="h1-mid">Alberta </span>Snow Radar</h1><span class="ver" title="Version 5.5">v5.5</span></div>
+      <div class="title-row"><h1><span class="h1-long">Central </span><span class="h1-mid">Alberta </span>Snow Radar</h1><span class="ver" title="Version 5.6">v5.6</span></div>
       <p class="sub">Live radar + model snowfall forecast</p>
     </div>
   </div>
@@ -752,11 +753,11 @@
       Town forecast: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> ·
       Plows &amp; road conditions: <a href="https://511.alberta.ca/" target="_blank" rel="noopener">511 Alberta</a> (unofficial use, may lag or break)<span id="baseAttrib"> ·
       Basemap: Esri World Dark Gray Canvas + World Transportation roads (Esri, HERE, Garmin, &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors, GIS user community)</span>.
-      Demo only — verify travel decisions on official sources. · v5.5
+      Demo only — verify travel decisions on official sources. · v5.6
     </p>
     <p class="attrib attr-short">
       Data: ECCC <a href="https://eccc-msc.github.io/open-data/msc-geomet/readme_en/" target="_blank" rel="noopener">MSC GeoMet</a> ·
-      <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> · plows: <a href="https://511.alberta.ca/" target="_blank" rel="noopener">511 Alberta</a> · basemap in map credits. Demo only · v5.5
+      <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> · plows: <a href="https://511.alberta.ca/" target="_blank" rel="noopener">511 Alberta</a> · basemap in map credits. Demo only · v5.6
     </p>
   </section>
   </div>
@@ -1786,7 +1787,10 @@ function initSonar() {
 const PLOW_RELAY_URL = 'https://alberta-plow-relay.krepchin.workers.dev/plows';   // v5.5: live relay (Cloudflare Worker, see worker/)
 const PLOW_RELAY_TIMEOUT_MS = 6000;
 const PLOW_URL = 'data/plows.json';      // fallback: GitHub Actions copy (~5 min)
-const ROADS_URL = 'data/roads.geojson';
+const ROADS_RELAY_URL = 'https://alberta-plow-relay.krepchin.workers.dev/roads';  // v5.6: live road conditions (Worker, ~3 min cache)
+const ROADS_RELAY_TIMEOUT_MS = 10000;
+const ROADS_URL = 'data/roads.geojson';  // fallback: GitHub Actions copy (~5 min)
+const ROADS_MAX_AGE_MS = 300000;         // reload the road layer at least every 5 min while it is on
 const PLOW_REFRESH_MS = 150000;          // 2.5 min (tab hidden)
 const PLOW_REFRESH_VISIBLE_MS = 60000;   // 1 min while the page is visible
 const PLOW_STALE_MIN = 20;
@@ -1812,6 +1816,7 @@ const ROAD_OTHER = '#94a3b8';
 let plowLayer = null, roadLayer = null, plowsOn = true, roadsOn = false;
 let plowSource = '';                     // 'live' (relay) or '5-min cache' (data/plows.json)
 let plowData = null, plowFetchedAt = 0, plowErr = '', roadsAvailable = false, roadsLoadedFor = '';
+let roadsRelayOk = false, roadsLoadedAt = 0, roadsSource = '', roadsLoading = false;
 const plowMarkers = {};
 
 function escHtml(v) {
@@ -1911,7 +1916,7 @@ async function loadPlows() {
     }
     if (!j) { j = await fetchPlowJson(PLOW_URL); plowSource = '5-min cache'; }
     plowData = j; plowErr = '';
-    roadsAvailable = !!j.roads;
+    roadsAvailable = !!j.roads || roadsRelayOk;
   } catch (e) {
     plowErr = e && e.status === 404 ? 'no data file yet' : (e && e.name === 'SyntaxError' ? 'unreadable data file' : errText(e));
     console.warn('Plow data:', plowErr);
@@ -1934,14 +1939,24 @@ function updateRoadUi() {
   b.setAttribute('aria-pressed', roadsOn && roadsAvailable ? 'true' : 'false');
   $('roadKey').hidden = !(roadsOn && roadsAvailable);
 }
+async function fetchRoadsJson(url, ms) {
+  const res = await fetchWithTimeout(url + '?t=' + Date.now(), ms);
+  const gj = await res.json();
+  if (!gj || !Array.isArray(gj.features)) throw new Error('unexpected roads.geojson format');
+  return gj;
+}
 async function loadRoads() {
-  if (!radarMap || !roadsAvailable) return;
-  const stamp = plowData && plowData.roads_generated || plowData && plowData.generated || '';
-  if (roadLayer && roadsLoadedFor === stamp) return;
+  if (!radarMap || !roadsAvailable || roadsLoading) return;
+  const stamp = plowData && plowData.roads_generated || '';
+  if (roadLayer && roadsLoadedFor === stamp && Date.now() - roadsLoadedAt < ROADS_MAX_AGE_MS) return;
+  roadsLoading = true;
   try {
-    const res = await fetchWithTimeout(ROADS_URL + '?t=' + Date.now(), 20000);
-    const gj = await res.json();
-    if (!gj || !Array.isArray(gj.features)) throw new Error('unexpected roads.geojson format');
+    let gj = null;
+    if (ROADS_RELAY_URL) {
+      try { gj = await fetchRoadsJson(ROADS_RELAY_URL, ROADS_RELAY_TIMEOUT_MS); roadsSource = 'live'; roadsRelayOk = true; }
+      catch (e) { console.warn('Road relay unavailable, using data/roads.geojson:', errText(e)); }
+    }
+    if (!gj) { gj = await fetchRoadsJson(ROADS_URL, 20000); roadsSource = '5-min cache'; }
     const nl = L.geoJSON(gj, {
       pane: 'roads',
       style: f => ({ color: roadStyle(f.properties && f.properties.condition), weight: 4, opacity: 0.85, lineCap: 'round' }),
@@ -1957,15 +1972,20 @@ async function loadRoads() {
       }
     });
     if (roadLayer) radarMap.removeLayer(roadLayer);
-    roadLayer = nl; roadsLoadedFor = stamp;
+    roadLayer = nl; roadsLoadedFor = stamp; roadsLoadedAt = Date.now();
     if (roadsOn) roadLayer.addTo(radarMap);
     const seen = {};
     gj.features.forEach(f => { const c = (f.properties || {}).condition || 'Unknown'; seen[roadStyle(c)] = seen[roadStyle(c)] || c; });
     $('roadKey').innerHTML = ROAD_COLORS.concat([[null, ROAD_OTHER, 'Other']]).filter(r => seen[r[1]])
       .map(r => '<span><i style="background:' + r[1] + '"></i>' + escHtml(r[2]) + '</span>').join('') || 'No reported segments in view';
+    const rg = gj.generated ? new Date(gj.generated) : null;
+    $('roadKey').insertAdjacentHTML('beforeend', '<span class="src">' + gj.features.length + ' segments · ' +
+      (rg && !isNaN(rg) ? escHtml(fmtAge(rg)) + ' · ' : '') + escHtml(roadsSource) + '</span>');
   } catch (e) {
     console.warn('Road conditions:', errText(e));
     $('roadKey').textContent = 'Road conditions unavailable (' + errText(e) + ')';
+  } finally {
+    roadsLoading = false;
   }
 }
 function setPlowsOn(on) {

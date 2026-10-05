@@ -6,7 +6,22 @@ server-side and returns the same JSON shape as the site's `data/plows.json`.
 
 Deployed at **https://alberta-plow-relay.krepchin.workers.dev/plows** (account "Krepchin's Account").
 
-## Endpoint
+## Endpoints
+
+### `GET /roads` (since v5.6)
+
+511 Alberta winter road conditions (developer API v3 `winterroads`). The developer key is the Worker secret
+`ALBERTA_511_API_KEY` (`npx wrangler@3 secret put ALBERTA_511_API_KEY < keyfile`) and is never returned or logged.
+- `EncodedPolyline` values are decoded and clipped to 50.7–53.1 N, 115–111 W (same box as `scripts/fetch_511.py`),
+  and each line is simplified (Douglas-Peucker, 0.0002°). About 236 KB raw, about 45 KB compressed, ~350 segments.
+- The response is a FeatureCollection with the same shape as `data/roads.geojson`. Each feature has
+  `properties: {id, road, location, area, condition, secondary, visibility, updated}`.
+- Cached for 180 s. `X-Roads-Generated` gives the build time. CORS is the same as `/plows`.
+- Returns `502` JSON if the key is missing or 511 fails.
+- `/plows` reports `roads: true` (plus `roads_generated` from the roads cache) whenever the key is configured,
+  so the page shows its Roads button.
+
+### `GET /plows`
 
 `GET /plows` → `{ generated, fetched, source:"511 Alberta", relay:"live", bbox, total_alberta, total,
 tooltips, tooltips_fetched, icons, vehicles:[{ id, lat, lon, heading, icon, type, owner, updated, updated_text }],
@@ -26,7 +41,7 @@ roads, roads_generated }`
 - **CORS:** `Access-Control-Allow-Origin` is sent only for `https://krepchin.github.io`, `http://localhost[:port]` and `http://127.0.0.1[:port]`, with `Vary: Origin`.
 - **User-Agent:** the same descriptive one used by `scripts/fetch_511.py`.
 
-No secrets or bindings are needed.
+The only secret is `ALBERTA_511_API_KEY` (used by `/roads`).
 
 ## Deploy / test
 
