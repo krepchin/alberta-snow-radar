@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#05080f" />
-<title>Central Alberta Snow Radar — Sonar Console · v5.6</title>
+<title>Central Alberta Snow Radar — Sonar Console · v5.7</title>
 <script>document.documentElement.className += ' js';</script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -336,6 +336,10 @@
   .fcbar span { font-size: 1rem; line-height: 0; }
   .fcbar:hover { background: rgba(20, 224, 192, 0.2); box-shadow: var(--glow); }
   .fcbar:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--cyan); }
+  /* v5.7: optional link to the separate snow-events page (TEST); shown only when the events config says enabled */
+  .evlink[hidden] { display: none !important; }
+  .fcbar.evlink { padding: 0 0.7rem; }
+  .fclink.evlink { margin-left: 0.3rem; }
 
   /* Town snowfall forecast (Open-Meteo) */
   .snowcard { right: 14px; bottom: 62px; width: 350px; padding: 0.8rem 0.9rem; }
@@ -563,7 +567,7 @@
     .feed { padding: 0.35rem; }
   }
   @media (max-width: 400px) {
-    .h1-mid { display: none; }   /* "Snow Radar v5.6" on narrow phones rather than an ellipsis */
+    .h1-mid { display: none; }   /* "Snow Radar v5.7" on narrow phones rather than an ellipsis */
   }
   /* Desktop, tablet and landscape: map on the left, every panel in a scrolling side column (nothing floats on the map) */
   @media (min-width: 721px), (min-width: 560px) and (max-height: 500px) {
@@ -619,7 +623,7 @@
   <div class="brand">
     <div class="scope" id="scope" aria-hidden="true"><span class="scope-ring" id="scopeRing"></span></div>
     <div>
-      <div class="title-row"><h1><span class="h1-long">Central </span><span class="h1-mid">Alberta </span>Snow Radar</h1><span class="ver" title="Version 5.6">v5.6</span></div>
+      <div class="title-row"><h1><span class="h1-long">Central </span><span class="h1-mid">Alberta </span>Snow Radar</h1><span class="ver" title="Version 5.7">v5.7</span></div>
       <p class="sub">Live radar + model snowfall forecast</p>
     </div>
   </div>
@@ -712,6 +716,7 @@
         <div class="lg-body"><img alt="Legend" /><div class="lg-cap"></div></div>
       </details>
       <a class="fcbar" id="fcMapLink" href="forecast.html#three-hills" title="Open the 7-day forecast for each town">7-day forecast <span aria-hidden="true">&rsaquo;</span></a>
+      <a class="fcbar evlink" id="evMapLink" href="events.html" title="Snow events: weather, road conditions and plow deployments (TEST)" hidden>Events <span aria-hidden="true">&rsaquo;</span></a>
     </div>
   </section>
 
@@ -730,7 +735,7 @@
       <p class="wxnote" id="wxNote">Loading current conditions from Open-Meteo…</p>
     </div>
     <div class="fcpart">
-      <p class="panel-title fc-title">Town snowfall (cm) <span class="badge fcst">FORECAST</span><a class="fclink" id="fcLink" href="forecast.html#three-hills" title="Open the 7-day forecast for each town">7-day <span aria-hidden="true">›</span></a></p>
+      <p class="panel-title fc-title">Town snowfall (cm) <span class="badge fcst">FORECAST</span><a class="fclink" id="fcLink" href="forecast.html#three-hills" title="Open the 7-day forecast for each town">7-day <span aria-hidden="true">›</span></a><a class="fclink evlink" id="evLink" href="events.html" title="Snow events: weather, road conditions and plow deployments (TEST)" hidden>Events <span aria-hidden="true">›</span></a></p>
       <div class="snowgrid" id="snowGrid">
         <span class="h">Town</span><span class="h">Next 24 h</span><span class="h">7 days</span>
       </div>
@@ -753,16 +758,32 @@
       Town forecast: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> ·
       Plows &amp; road conditions: <a href="https://511.alberta.ca/" target="_blank" rel="noopener">511 Alberta</a> (unofficial use, may lag or break)<span id="baseAttrib"> ·
       Basemap: Esri World Dark Gray Canvas + World Transportation roads (Esri, HERE, Garmin, &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors, GIS user community)</span>.
-      Demo only — verify travel decisions on official sources. · v5.6
+      Demo only — verify travel decisions on official sources. · v5.7
     </p>
     <p class="attrib attr-short">
       Data: ECCC <a href="https://eccc-msc.github.io/open-data/msc-geomet/readme_en/" target="_blank" rel="noopener">MSC GeoMet</a> ·
-      <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> · plows: <a href="https://511.alberta.ca/" target="_blank" rel="noopener">511 Alberta</a> · basemap in map credits. Demo only · v5.6
+      <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> · plows: <a href="https://511.alberta.ca/" target="_blank" rel="noopener">511 Alberta</a> · basemap in map credits. Demo only · v5.7
     </p>
   </section>
   </div>
 </div>
 
+<script>
+/* v5.7 (TEST): snow-event log link. Set to '' to remove the Events link without touching anything else.
+   The link only appears when this config answers {"enabled": true}; if the events Worker is off or deleted, it stays hidden. */
+const EVENTS_CONFIG_URL = 'https://alberta-snow-events.krepchin.workers.dev/events/config';
+function initEventsLink() {
+  if (!EVENTS_CONFIG_URL || typeof fetch !== 'function') return;
+  const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = setTimeout(() => ctl && ctl.abort(), 4000);
+  fetch(EVENTS_CONFIG_URL, ctl ? { signal: ctl.signal } : {})
+    .then(r => (r.ok ? r.json() : null))
+    .then(j => { if (j && j.enabled === true) ['evLink', 'evMapLink'].forEach(id => { const a = document.getElementById(id); if (a) a.hidden = false; }); })
+    .catch(() => { /* events page unavailable: keep the link hidden */ })
+    .finally(() => clearTimeout(timer));
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initEventsLink); else initEventsLink();
+</script>
 <script>
 /* Central Alberta snow radar console — radar logic reused from index.html (Central Alberta Weather demo).
    Every network step has a timeout and ends in either data or a visible error. */
