@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#05080f" />
-<title>Central Alberta Snow Events · v5.8</title>
+<title>Central Alberta Snow Events · v5.8.1</title>
 <script>document.documentElement.className += ' js';</script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -131,6 +131,11 @@
   .h2 .sub { margin-left: auto; font: 500 0.66rem/1.3 var(--mono); color: var(--muted); letter-spacing: 0.04em; }
   .cards { display: grid; gap: 10px; list-style: none; margin: 0; padding: 0; }
   @media (min-width: 900px) { .cards { grid-template-columns: 1fr 1fr; } }
+  /* v5.8.1 desktop only: a lone event card spans the full width; tile subtitles wrap instead of being cut off */
+  @media (min-width: 900px) {
+    .cards > li:only-child { grid-column: 1 / -1; }
+    .stat .s { white-space: normal; overflow: visible; text-overflow: clip; }
+  }
   .card { display: block; position: relative; padding: 0.75rem 0.85rem; border-radius: var(--radius); background: var(--glass);
     border: 1px solid var(--line); color: var(--text); text-decoration: none; box-shadow: 0 10px 30px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.03);
     animation: rise .45s var(--ease) both; touch-action: manipulation; }
@@ -223,7 +228,7 @@
   <div class="brand">
     <div class="scope" aria-hidden="true"></div>
     <div>
-      <div class="title-row"><h1><span class="h1-long">Central Alberta </span>Snow Events</h1><span class="ver" title="Version 5.8">v5.8</span></div>
+      <div class="title-row"><h1><span class="h1-long">Central Alberta </span>Snow Events</h1><span class="ver" title="Version 5.8.1">v5.8.1</span></div>
       <p class="sub">Weather · 511 roads · plow deployments</p>
     </div>
   </div>
@@ -248,7 +253,7 @@
     stopped reporting, or left the feed; times are accurate to about 5 minutes.
     Data: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0) ·
     <a href="https://511.alberta.ca/" target="_blank" rel="noopener">511 Alberta</a>. Demo only. ·
-    <a href="./">Back to the snow radar</a> · v5.8
+    <a href="./">Back to the snow radar</a> · v5.8.1
   </p>
 </main>
 <script>
