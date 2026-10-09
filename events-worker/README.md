@@ -110,3 +110,15 @@ npx wrangler@3 d1 execute alberta-snow-events --remote --file /workspace/alberta
 
 If only the Worker is deleted, the config fetch fails, so the link stays hidden. The main page
 keeps working.
+
+## v5.8 changes (Oct 8, 2026)
+
+- **Trucks: Emcon only.** `getPlows()` drops every vehicle whose owner does not match `/emcon|mcon/i`, so Mainroad and other
+  contractors are never stored. Rows already stored for TEST event 1 were purged (trucks, snapshot plow lists, counts).
+- **CMA 518** (Castor, Consort, Czar) is set up like CMA 517: weather points `ca`, `co`, `cz`; transitions carry a `cma518` flag
+  (`ALTER TABLE transitions ADD COLUMN cma518 INTEGER NOT NULL DEFAULT 0`, already applied); snapshots carry `nbc518`;
+  a non-bare CMA 518 segment or snowfall at a CMA 518 town opens or continues an event, and closing needs both CMAs bare.
+- The relay's plow and road boxes now reach lon -109.9 (Saskatchewan border) so all 32 CMA 518 segments are included.
+- **Google Drive copy:** `/workspace/export-snow-events-to-drive.py` (on the agent box) saves every event as JSON, CSV and a
+  Google Sheet to My Drive > Off-grid bus > Alberta Weather Demo > Snow Events. It is not part of this Worker; removing the
+  Worker does not touch the Drive files.
