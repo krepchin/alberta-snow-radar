@@ -1,4 +1,4 @@
-# alberta-snow-events: TEST snow-event recorder for https://krepchin.github.io/alberta-snow-radar/
+# alberta-snow-events: snow-event recorder (always on) for https://krepchin.github.io/alberta-snow-radar/
 # Separate from alberta-plow-relay (reads its public data through a read-only service binding).
 name = "alberta-snow-events"
 main = "worker.js"
@@ -8,10 +8,6 @@ preview_urls = false
 
 [triggers]
 crons = ["*/5 * * * *"]
-
-[vars]
-# Kill switch: "false" stops all logging (cron does nothing) and hides the Events link on the map page.
-EVENTS_ENABLED = "true"
 
 [[d1_databases]]
 binding = "DB"

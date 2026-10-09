@@ -1,13 +1,14 @@
-# alberta-snow-events (TEST)
+# alberta-snow-events
 
-Snow-event log for the Central Alberta Snow Radar page. **This is a removable test deployment.**
+Snow-event log for the Central Alberta Snow Radar page. **Always on**: there is no on/off switch and no test
+controls (both removed Oct 8, 2026, at Kent's request). Event 1 is an earlier TEST record and is kept as is.
 It is a separate Cloudflare Worker with its own D1 database. It does not change the map, the plow
 relay (`alberta-plow-relay`), `pages.yml` or the plow trigger script. It only *reads* the relay's
 public data (through a read-only service binding).
 
 ```
 cron */5 min ──► alberta-snow-events Worker ──► D1 "alberta-snow-events"
-                    │  reads: Open-Meteo (3 towns, 1 request)
+                    │  reads: Open-Meteo (6 towns, 1 request)
                     │         alberta-plow-relay /plows and /roads (service binding RELAY)
                     └─ serves JSON/CSV to events.html (CORS: krepchin.github.io, localhost)
 ```
@@ -36,8 +37,7 @@ not needed. It is also less reliable at 5-minute intervals and would add commits
   reported moving for 60 min, and no snowfall for 2 h.
 * **Truck deployments**: *out* when a truck starts moving, or first appears with a fresh report.
   *Back* when it stops reporting (511 update older than 30 min or gone from the feed), or when it
-  has been stationary for 30 min (back time = last movement). Mainroad and other owners are logged
-  too.
+  has been stationary for 30 min (back time = last movement). Emcon trucks only (see v5.8 notes).
 * **Summary**: duration, snowfall per town, max trucks out at once, truck-hours, Emcon trucks
   deployed, and the lag from the first non-bare CMA 517 report to the first Emcon truck out.
 * Road conditions "Closed" are **not** counted as winter conditions. Long-term closures would
@@ -51,28 +51,11 @@ not needed. It is also less reliable at 5-minute intervals and would add commits
 
 | Path | |
 |---|---|
-| `GET /events/config` | `{enabled, test_mode}`. The main page shows the Events link only when `enabled` is true. |
+| `GET /events/config` | Always `{"enabled": true, "trucks": "emcon"}`. The main page no longer reads it; the Events link always shows. |
 | `GET /events/status` | Last check result and the currently open event. |
 | `GET /events` | Event list, newest first, with summaries. |
 | `GET /events/{id}` | Full event: snapshots, transitions, trucks. |
 | `GET /events/{id}/csv` | CSV download with weather, road and deployment sections (UTC times). |
-| `GET /events/test/{start\|stop\|clear\|snapshot}?token=…` | Test controls (Worker secret `TEST_TOKEN`). |
-
-### Test mode
-
-The token is stored only as the Worker secret and in `~/.config/alberta-snow-events/test-token`
-on the box (mode 600). Never paste it into chat or commits.
-
-```sh
-E=https://alberta-snow-events.krepchin.workers.dev
-T=~/.config/alberta-snow-events/test-token
-curl -s -G --data-urlencode "token@$T" $E/events/test/start   # opens a TEST event (flagged is_test)
-curl -s -G --data-urlencode "token@$T" $E/events/test/stop    # closes it
-curl -s -G --data-urlencode "token@$T" $E/events/test/clear   # deletes ALL TEST events and their data
-```
-
-A TEST event closes automatically after 3 h, or when a real event starts. To rotate the token:
-`npx wrangler@3 secret put TEST_TOKEN --config events-worker/wrangler.toml < newtokenfile`.
 
 ## Deploy / operate
 
@@ -86,30 +69,15 @@ npx wrangler@3 deploy --config /workspace/alberta-snow-radar-site/events-worker/
 npx wrangler@3 d1 execute alberta-snow-events --remote --file /workspace/alberta-snow-radar-site/events-worker/schema.sql -y   # first time only
 ```
 
-## Kill switch
+## Full removal (admin note)
 
-`EVENTS_ENABLED` in `wrangler.toml` controls recording and the link:
+Only if the whole feature is ever retired:
 
-* Set it to `"false"` and redeploy, or run once:
-  `npx wrangler@3 deploy --config …/events-worker/wrangler.toml --var EVENTS_ENABLED:false`.
-  * The cron then returns immediately and writes nothing to D1.
-  * `/events/config` reports `enabled:false`, so the main page hides the Events link (within about
-    a minute, because of the 60 s cache).
-  * events.html shows "Event recording is switched off". Past events stay readable.
-* Set it back to `"true"` and redeploy to resume.
-
-## Full removal
 
 1. `npx wrangler@3 delete --name alberta-snow-events` (removes the Worker and its cron).
 2. `npx wrangler@3 d1 delete alberta-snow-events` (deletes all recorded data).
 3. In the site repo, delete `events.html` and the `events-worker/` folder. In `index.html`,
-   remove the `EVENTS_CONFIG_URL` script block and the two `evlink` anchors (`#evMapLink`,
-   `#evLink`) with their `.evlink` CSS. Setting `EVENTS_CONFIG_URL = ''` alone is enough to hide
-   the link.
-4. Optionally delete `~/.config/alberta-snow-events/`.
-
-If only the Worker is deleted, the config fetch fails, so the link stays hidden. The main page
-keeps working.
+   remove the two `evlink` anchors (`#evMapLink`, `#evLink`) and their `.evlink` CSS.
 
 ## v5.8 changes (Oct 8, 2026)
 

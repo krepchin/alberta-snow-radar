@@ -342,8 +342,7 @@
   .fcbar span { font-size: 1rem; line-height: 0; }
   .fcbar:hover { background: rgba(20, 224, 192, 0.2); box-shadow: var(--glow); }
   .fcbar:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--cyan); }
-  /* v5.7: optional link to the separate snow-events page (TEST); shown only when the events config says enabled */
-  .evlink[hidden] { display: none !important; }
+  /* Events link (always shown since Oct 8 2026; the on/off switch was removed) */
   .fcbar.evlink { padding: 0 0.7rem; }
   .fclink.evlink { margin-left: 0.3rem; }
 
@@ -727,7 +726,7 @@
         <div class="lg-body"><img alt="Legend" /><div class="lg-cap"></div></div>
       </details>
       <a class="fcbar" id="fcMapLink" href="forecast.html#three-hills" title="Open the 7-day forecast for each town">7-day forecast <span aria-hidden="true">&rsaquo;</span></a>
-      <a class="fcbar evlink" id="evMapLink" href="events.html" title="Snow events: weather, road conditions and plow deployments (TEST)" hidden>Events <span aria-hidden="true">&rsaquo;</span></a>
+      <a class="fcbar evlink" id="evMapLink" href="events.html" title="Snow events: weather, road conditions and Emcon plow deployments">Events <span aria-hidden="true">&rsaquo;</span></a>
     </div>
   </section>
 
@@ -746,7 +745,7 @@
       <p class="wxnote" id="wxNote">Loading current conditions from Open-Meteo…</p>
     </div>
     <div class="fcpart">
-      <p class="panel-title fc-title">Town snowfall (cm) <span class="badge fcst">FORECAST</span><a class="fclink" id="fcLink" href="forecast.html#three-hills" title="Open the 7-day forecast for each town">7-day <span aria-hidden="true">›</span></a><a class="fclink evlink" id="evLink" href="events.html" title="Snow events: weather, road conditions and plow deployments (TEST)" hidden>Events <span aria-hidden="true">›</span></a></p>
+      <p class="panel-title fc-title">Town snowfall (cm) <span class="badge fcst">FORECAST</span><a class="fclink" id="fcLink" href="forecast.html#three-hills" title="Open the 7-day forecast for each town">7-day <span aria-hidden="true">›</span></a><a class="fclink evlink" id="evLink" href="events.html" title="Snow events: weather, road conditions and Emcon plow deployments">Events <span aria-hidden="true">›</span></a></p>
       <div class="snowgrid" id="snowGrid">
         <span class="h">Town</span><span class="h">Next 24 h</span><span class="h">7 days</span>
       </div>
@@ -779,22 +778,6 @@
   </div>
 </div>
 
-<script>
-/* v5.7 (TEST): snow-event log link. Set to '' to remove the Events link without touching anything else.
-   The link only appears when this config answers {"enabled": true}; if the events Worker is off or deleted, it stays hidden. */
-const EVENTS_CONFIG_URL = 'https://alberta-snow-events.krepchin.workers.dev/events/config';
-function initEventsLink() {
-  if (!EVENTS_CONFIG_URL || typeof fetch !== 'function') return;
-  const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  const timer = setTimeout(() => ctl && ctl.abort(), 4000);
-  fetch(EVENTS_CONFIG_URL, ctl ? { signal: ctl.signal } : {})
-    .then(r => (r.ok ? r.json() : null))
-    .then(j => { if (j && j.enabled === true) ['evLink', 'evMapLink'].forEach(id => { const a = document.getElementById(id); if (a) a.hidden = false; }); })
-    .catch(() => { /* events page unavailable: keep the link hidden */ })
-    .finally(() => clearTimeout(timer));
-}
-if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initEventsLink); else initEventsLink();
-</script>
 <script>
 /* Central Alberta snow radar console — radar logic reused from index.html (Central Alberta Weather demo).
    Every network step has a timeout and ends in either data or a visible error. */

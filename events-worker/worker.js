@@ -1,11 +1,11 @@
 /**
- * alberta-snow-events: TEST snow-event recorder (Cloudflare Worker + D1 + Cron every 5 min).
+ * alberta-snow-events: snow-event recorder (Cloudflare Worker + D1 + Cron every 5 min).
  *
  * Separate from the map. It only READS public data:
  *   - Open-Meteo current + hourly model weather for Three Hills, Drumheller, Stettler (CMA 517) and Castor, Consort, Czar (CMA 518)
  *   - alberta-plow-relay /roads and /plows (511 Alberta), via a read-only service binding
  *     (falls back to the public workers.dev URL)
- * Nothing is recorded until an event opens (see ARMING). Kill switch: var EVENTS_ENABLED = "false".
+ * Nothing is recorded until an event opens (see ARMING). Recording is always on (no switch, no test controls; removed Oct 8 2026).
  * Nothing here is invented: missing inputs are stored as null and never treated as "bare" or "no snow".
  * Trucks: Emcon only (owner matches /emcon|mcon/i). Mainroad and other contractors' trucks are dropped on input and never stored.
  */
@@ -27,19 +27,18 @@ const OM = 'https://api.open-meteo.com/v1/forecast?' + new URLSearchParams({
   current: 'temperature_2m,snowfall,precipitation,wind_speed_10m,wind_gusts_10m,visibility,weather_code',
   hourly: 'snowfall', past_hours: '6', forecast_hours: '12', timeformat: 'unixtime', timezone: 'GMT'
 });
-const UA = 'AlbertaSnowEvents/0.1 (+https://krepchin.github.io/alberta-snow-radar/; personal non-commercial TEST; every 5 min)';
+const UA = 'AlbertaSnowEvents/0.1 (+https://krepchin.github.io/alberta-snow-radar/; personal non-commercial; every 5 min)';
 const MIN = 60000;
 const MOVE_KM = 0.25;          // moved more than this between checks = moving
 const FRESH_MS = 30 * MIN;     // 511 "Updated" older than this = not reporting
 const STATIONARY_MS = 30 * MIN;// out truck stationary this long = back
 const CLOSE_EMCON_MS = 60 * MIN;
 const CLOSE_SNOW_MS = 120 * MIN;
-const TEST_MAX_MS = 3 * 60 * MIN;  // TEST events auto-close after 3 h
+const TEST_MAX_MS = 3 * 60 * MIN;  // legacy: a (pre-existing) TEST event left open is closed after 3 h
 const ALLOWED_ORIGINS = [/^https:\/\/krepchin\.github\.io$/, /^http:\/\/localhost(:\d+)?$/, /^http:\/\/127\.0\.0\.1(:\d+)?$/];
 
 const isWinter = c => !!c && !/^(bare|no report|closed)/i.test(String(c).trim());   // see README: Closed is excluded
 const group = o => /emcon|mcon/i.test(o || '') ? 'emcon' : /mainroad/i.test(o || '') ? 'mainroad' : 'other';
-const enabled = env => String(env.EVENTS_ENABLED || '').toLowerCase() === 'true';
 
 export default {
   async scheduled(controller, env, ctx) {
@@ -52,12 +51,10 @@ export default {
     if (request.method !== 'GET') return json({ error: 'method not allowed' }, 405, cors);
     const p = url.pathname.replace(/\/+$/, '') || '/';
     try {
-      if (p === '/') return new Response('alberta-snow-events (TEST): GET /events/config · /events/status · /events · /events/{id} · /events/{id}/csv. Data: Open-Meteo, 511 Alberta.\n',
+      if (p === '/') return new Response('alberta-snow-events: GET /events/config · /events/status · /events · /events/{id} · /events/{id}/csv. Data: Open-Meteo, 511 Alberta.\n',
         { headers: { 'Content-Type': 'text/plain; charset=utf-8', ...cors } });
-      if (p === '/events/config') return json({ enabled: enabled(env), test_mode: true, trucks: 'emcon' }, 200, { ...cors, 'Cache-Control': 'public, max-age=60' });
+      if (p === '/events/config') return json({ enabled: true, trucks: 'emcon' }, 200, { ...cors, 'Cache-Control': 'public, max-age=60' });
       if (p === '/events/status') return json(await status(env), 200, cors);
-      const tm = /^\/events\/test\/(start|stop|clear|snapshot)$/.exec(p);
-      if (tm) return testAction(tm[1], url, env, ctx, cors);
       if (p === '/events') return listEvents(env, cors);
       const dm = /^\/events\/(\d+)(\/csv)?$/.exec(p);
       if (dm) return dm[2] ? eventCsv(env, Number(dm[1]), cors) : eventDetail(env, Number(dm[1]), cors);
@@ -144,7 +141,6 @@ async function getPlows(env) {
 
 /* ---------------- the 5-minute check ---------------- */
 async function runCheck(env, opts = {}) {
-  if (!enabled(env)) return { skipped: 'EVENTS_ENABLED is not "true"' };
   const now = Date.now();
   const errors = {};
   const [wx, segs, plows] = await Promise.all([
@@ -195,10 +191,9 @@ async function runCheck(env, opts = {}) {
     stmts.push(...closeStatements(db, ev, now, closed.reason));
     ev = null;
   }
-  if (!ev && (reasons.length || opts.forceTest)) {
-    const isTest = !reasons.length && !!opts.forceTest;
-    const r = await db.prepare("INSERT INTO events (started, is_test, status, open_reason, summary, trucks, wx, updated) VALUES (?, ?, 'open', ?, '{}', '{}', '{}', ?) RETURNING *")
-      .bind(now, isTest ? 1 : 0, isTest ? 'TEST (manually started)' : reasons.join('; '), now).first();
+  if (!ev && reasons.length) {
+    const r = await db.prepare("INSERT INTO events (started, is_test, status, open_reason, summary, trucks, wx, updated) VALUES (?, 0, 'open', ?, '{}', '{}', '{}', ?) RETURNING *")
+      .bind(now, reasons.join('; '), now).first();
     ev = r; opened = true;
   } else if (ev && !ev.is_test) {
     const canClose = cmaNonBare && cmaNonBare.length === 0 && cma518NonBare && cma518NonBare.length === 0 && snowRecent2h === false && !emconReporting &&
@@ -372,11 +367,11 @@ const round = (v, n) => Math.round(v * 10 ** n) / 10 ** n;
 async function status(env) {
   const r = await env.DB.prepare("SELECT v, t FROM state WHERE k = 'check'").first();
   const open = await env.DB.prepare("SELECT id, is_test, started FROM events WHERE status = 'open' ORDER BY id DESC LIMIT 1").first();
-  return { enabled: enabled(env), last_check: r ? parse(r.v, null) : null, open_event: open || null };
+  return { enabled: true, last_check: r ? parse(r.v, null) : null, open_event: open || null };
 }
 async function listEvents(env, cors) {
   const rows = (await env.DB.prepare('SELECT id, started, ended, is_test, status, open_reason, close_reason, summary FROM events ORDER BY started DESC LIMIT 100').all()).results;
-  const body = '{"enabled":' + enabled(env) + ',"events":[' + rows.map(r => JSON.stringify({ ...r, summary: undefined }).replace(/}$/, ',"summary":' + (r.summary || '{}') + '}')).join(',') + ']}';
+  const body = '{"enabled":true,"events":[' + rows.map(r => JSON.stringify({ ...r, summary: undefined }).replace(/}$/, ',"summary":' + (r.summary || '{}') + '}')).join(',') + ']}';
   return json(body, 200, cors);
 }
 async function eventDetail(env, id, cors) {
@@ -433,43 +428,4 @@ async function eventCsv(env, id, cors) {
   }
   return new Response(L.join('\r\n') + '\r\n', { headers: { 'Content-Type': 'text/csv; charset=utf-8',
     'Content-Disposition': `attachment; filename="snow-event-${id}${ev.is_test ? '-TEST' : ''}.csv"`, 'Cache-Control': 'no-store', ...cors } });
-}
-
-/* ---------------- TEST controls (token = Worker secret TEST_TOKEN) ---------------- */
-function tokenOk(env, given) {
-  const want = env.TEST_TOKEN || '';
-  if (!want || !given || given.length !== want.length) return false;
-  let d = 0;
-  for (let i = 0; i < want.length; i++) d |= want.charCodeAt(i) ^ given.charCodeAt(i);
-  return d === 0;
-}
-async function testAction(action, url, env, ctx, cors) {
-  if (!tokenOk(env, url.searchParams.get('token') || '')) return json({ error: 'bad or missing token' }, 403, cors);
-  if (!enabled(env)) return json({ error: 'EVENTS_ENABLED is false; nothing is recorded' }, 409, cors);
-  const db = env.DB;
-  if (action === 'start') {
-    const open = await db.prepare("SELECT id, is_test FROM events WHERE status = 'open' LIMIT 1").first();
-    if (open) return json({ error: 'an event is already open', event: open }, 409, cors);
-    const check = await runCheck(env, { source: 'test-start', forceTest: true });
-    return json({ ok: true, started: check.opened || check.open_event, check }, 200, cors);
-  }
-  if (action === 'snapshot') return json({ ok: true, check: await runCheck(env, { source: 'test-snapshot' }) }, 200, cors);
-  if (action === 'stop') {
-    const ev = await db.prepare("SELECT * FROM events WHERE status = 'open' AND is_test = 1 ORDER BY id DESC LIMIT 1").first();
-    if (!ev) return json({ error: 'no open TEST event' }, 404, cors);
-    await db.batch(closeStatements(db, ev, Date.now(), 'TEST stopped manually'));
-    return json({ ok: true, stopped: ev.id }, 200, cors);
-  }
-  if (action === 'clear') {
-    const ids = (await db.prepare('SELECT id FROM events WHERE is_test = 1').all()).results.map(r => r.id);
-    if (!ids.length) return json({ ok: true, cleared: [] }, 200, cors);
-    const q = ids.map(() => '?').join(',');
-    await db.batch([
-      db.prepare(`DELETE FROM snapshots WHERE event_id IN (${q})`).bind(...ids),
-      db.prepare(`DELETE FROM transitions WHERE event_id IN (${q})`).bind(...ids),
-      db.prepare(`DELETE FROM events WHERE id IN (${q})`).bind(...ids)
-    ]);
-    return json({ ok: true, cleared: ids }, 200, cors);
-  }
-  return json({ error: 'unknown action' }, 400, cors);
 }

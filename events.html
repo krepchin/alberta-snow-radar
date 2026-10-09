@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#05080f" />
-<title>Central Alberta Snow Events (TEST) · v5.8</title>
+<title>Central Alberta Snow Events · v5.8</title>
 <script>document.documentElement.className += ' js';</script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -223,7 +223,7 @@
   <div class="brand">
     <div class="scope" aria-hidden="true"></div>
     <div>
-      <div class="title-row"><h1><span class="h1-long">Central Alberta </span>Snow Events</h1><span class="ver" title="Version 5.8 (events TEST)">v5.8</span></div>
+      <div class="title-row"><h1><span class="h1-long">Central Alberta </span>Snow Events</h1><span class="ver" title="Version 5.8">v5.8</span></div>
       <p class="sub">Weather · 511 roads · plow deployments</p>
     </div>
   </div>
@@ -233,7 +233,7 @@
 </header>
 </div>
 <main>
-  <p class="banner"><b>TEST deployment.</b> Snow-event tracking is being trialled and may be switched off or removed. Weather is Open-Meteo model data (not observations); roads and plows are 511 Alberta. Trucks: Emcon only.</p>
+  <p class="banner">Weather is Open-Meteo model data (not observations); roads and plows are 511 Alberta. Trucks: Emcon only.</p>
   <div class="status" id="status" data-state="loading" role="status" aria-live="polite">
     <span class="dot" aria-hidden="true"></span>
     <span class="msg" id="statusMsg">Loading snow events…</span>
@@ -356,12 +356,10 @@ async function showList() {
   const checkTxt = lc ? `Last check ${fmtDT(lc.t)} (${fmtAgo(lc.t)}): ` +
     (lc.reasons && lc.reasons.length ? lc.reasons.join('; ') : 'no snowfall at the six towns, ' + (lc.cma517_non_bare == null ? '?' : lc.cma517_non_bare) + ' CMA 517 segments non-bare, ' + (lc.cma518_non_bare == null ? '' : lc.cma518_non_bare + ' CMA 518 segments non-bare, ') +
       (lc.snow_next_12h ? 'snow in the next 12 h forecast' : 'no snow in the next 12 h forecast') + ', ' + (lc.emcon_in_box == null ? (lc.plows_in_box == null ? '?' : lc.plows_in_box + ' plows') : lc.emcon_in_box + ' Emcon trucks') + ' in the map area.') : 'No check has run yet.';
-  if (!list.enabled) {
-    v.innerHTML = `<div class="waiting"><h2>Event recording is switched off</h2><p>Past events stay listed below if any were recorded.</p></div>`;
-  } else v.innerHTML = '';
+  v.innerHTML = '';
   const evs = list.events || [];
   const real = evs.filter(e => !e.is_test);
-  if (!real.length && list.enabled) {
+  if (!real.length) {
     v.insertAdjacentHTML('beforeend', `<div class="waiting"><h2>Waiting for the first snow event of the season</h2><p>Recording starts on its own when Open-Meteo shows snow falling at Three Hills, Drumheller or Stettler (CMA 517) or Castor, Consort or Czar (CMA 518), a CMA 517 or CMA 518 road is reported non-bare, or Emcon trucks move with snow in the 12 h forecast.${evs.length ? ' Entries marked TEST below are short samples, not real events.' : ''}</p></div>`);
   }
   if (evs.length) {
