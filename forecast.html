@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#05080f" />
-<title>Central Alberta 7-Day Forecast · v5.2</title>
+<title>Central Alberta 7-Day Forecast · v5.8</title>
 <script>document.documentElement.className += ' js';</script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -103,7 +103,7 @@
   /* ---------- Town tabs ---------- */
   .townnav {
     position: relative;
-    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px;
+    display: grid; grid-template-columns: 30px repeat(3, minmax(0, 1fr)) minmax(0, 0.8fr); gap: 6px;   /* v5.8: CMA label | 3 towns | All, one row per CMA */
     padding: 0.45rem 1rem; padding-left: calc(1rem + env(safe-area-inset-left)); padding-right: calc(1rem + env(safe-area-inset-right));
     background: rgba(6, 11, 20, 0.97); border-bottom: 1px solid var(--line);
   }
@@ -114,6 +114,12 @@
     transition: color .25s var(--ease), background .25s var(--ease), box-shadow .25s var(--ease), border-color .25s var(--ease);
   }
   .townnav a:hover { color: var(--text); border-color: var(--line-strong); }
+  .townnav a.all { grid-column: 5; grid-row: 1 / span 2; }
+  .townnav .cmalbl { display: flex; flex-direction: column; align-items: center; justify-content: center; font: 600 0.52rem/1.15 var(--mono);
+    letter-spacing: 0.06em; color: var(--dim); text-align: center; }
+  .townnav .cmalbl b { font-size: 0.7rem; color: var(--muted); letter-spacing: 0.02em; }
+  .cmagrp { margin: 1rem 0 0.3rem; font: 600 0.7rem/1.4 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim);
+    border-top: 1px solid var(--line); padding-top: 0.45rem; }
   .townnav a:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--cyan); }
   .townnav a.active { color: #e9fffb; border-color: rgba(20, 224, 192, 0.65); background: linear-gradient(180deg, rgba(20,224,192,0.28), rgba(25,211,197,0.10)); box-shadow: var(--glow); text-shadow: 0 0 8px rgba(20,224,192,0.6); }
 
@@ -253,7 +259,7 @@
   <div class="brand">
     <div class="scope" aria-hidden="true"></div>
     <div>
-      <div class="title-row"><h1><span class="h1-long">Central Alberta </span>7-Day Forecast</h1><span class="ver" title="Version 5.2">v5.2</span></div>
+      <div class="title-row"><h1><span class="h1-long">Central Alberta </span>7-Day Forecast</h1><span class="ver" title="Version 5.8">v5.8</span></div>
       <p class="sub">Open-Meteo model forecast · by town</p>
     </div>
   </div>
@@ -263,10 +269,15 @@
 </header>
 
 <nav class="townnav" aria-label="Choose town">
-  <a href="#three-hills" data-place="three-hills">Three Hills</a>
-  <a href="#drumheller" data-place="drumheller">Drumheller</a>
-  <a href="#stettler" data-place="stettler">Stettler</a>
-  <a href="#all" data-place="all">All</a>
+  <span class="cmalbl" aria-hidden="true">CMA<b>517</b></span>
+  <a href="#three-hills" data-place="three-hills" data-cma="517">Three Hills</a>
+  <a href="#drumheller" data-place="drumheller" data-cma="517">Drumheller</a>
+  <a href="#stettler" data-place="stettler" data-cma="517">Stettler</a>
+  <a href="#all" data-place="all" class="all">All</a>
+  <span class="cmalbl" aria-hidden="true">CMA<b>518</b></span>
+  <a href="#castor" data-place="castor" data-cma="518">Castor</a>
+  <a href="#consort" data-place="consort" data-cma="518">Consort</a>
+  <a href="#czar" data-place="czar" data-cma="518">Czar</a>
 </nav>
 </div>
 
@@ -282,17 +293,21 @@
     daily values in Mountain Time. Highs/lows °C · precipitation mm · snowfall cm · chance = max hourly probability of precipitation ·
     wind = max sustained and gusts at 10 m, km/h, with dominant direction. Model estimates, not an official forecast: check
     <a href="https://weather.gc.ca/" target="_blank" rel="noopener">Environment Canada</a> for warnings. ·
-    <a href="./" id="footRadar">Back to the snow radar</a> · v5.2
+    <a href="./" id="footRadar">Back to the snow radar</a> · v5.8
   </p>
 </main>
 
 <script>
 'use strict';
-/* Central Alberta 7-day forecast (Open-Meteo, one multi-location request for all three towns). */
+/* Central Alberta 7-day forecast (Open-Meteo, one multi-location request for all six towns (CMA 517 + CMA 518)). */
 const TOWNS = [
-  { id: 'three-hills', name: 'Three Hills', lat: 51.70722, lon: -113.26472 },
-  { id: 'drumheller',  name: 'Drumheller',  lat: 51.46444, lon: -112.71889 },
-  { id: 'stettler',    name: 'Stettler',    lat: 52.32389, lon: -112.70444 }
+  { id: 'three-hills', name: 'Three Hills', lat: 51.70722, lon: -113.26472, cma: '517' },
+  { id: 'drumheller',  name: 'Drumheller',  lat: 51.46444, lon: -112.71889, cma: '517' },
+  { id: 'stettler',    name: 'Stettler',    lat: 52.32389, lon: -112.70444, cma: '517' },
+  // v5.8: CMA 518 towns (coordinates: Open-Meteo geocoding / GeoNames)
+  { id: 'castor',      name: 'Castor',      lat: 52.21684, lon: -111.88509, cma: '518' },
+  { id: 'consort',     name: 'Consort',     lat: 52.01683, lon: -110.76836, cma: '518' },
+  { id: 'czar',        name: 'Czar',        lat: 52.45013, lon: -110.83494, cma: '518' }
 ];
 const DAILY = ['weather_code', 'temperature_2m_max', 'temperature_2m_min', 'precipitation_sum', 'snowfall_sum',
   'precipitation_probability_max', 'wind_speed_10m_max', 'wind_gusts_10m_max', 'wind_direction_10m_dominant'];
@@ -550,7 +565,12 @@ function render() {
   const box = $('towns');
   if (data) {
     box.className = '';
-    box.innerHTML = data.towns.map(townHtml).join('');
+    let grp = null;   // v5.8: towns grouped by CMA (headings shown in the "All" view)
+    box.innerHTML = data.towns.map(t => {
+      const tw = TOWNS.find(x => x.id === t.id), g = tw ? tw.cma : null;
+      const hd = g && g !== grp ? `<h3 class="cmagrp" data-cma="${g}">CMA ${g}</h3>` : '';
+      grp = g; return hd + townHtml(t);
+    }).join('');
   } else if (loading) {
     box.className = 'skeleton';
     box.innerHTML = '<ol class="days">' + '<li class="day"></li>'.repeat(7) + '</ol>';
@@ -567,11 +587,12 @@ function applyView() {
     if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   });
   document.querySelectorAll('#towns .town').forEach(s => { s.hidden = !(view === 'all' || s.dataset.town === view); });
+  document.querySelectorAll('#towns .cmagrp').forEach(h => { h.hidden = view !== 'all'; });
   const radarHash = view === 'all' ? '#region' : '#' + view;
   $('backLink').href = './' + radarHash;
   $('footRadar').href = './' + radarHash;
   const tn = TOWNS.find(t => t.id === view);
-  document.title = (tn ? tn.name + ' 7-Day Forecast' : 'Central Alberta 7-Day Forecast') + ' · v5.2';
+  document.title = (tn ? tn.name + ' 7-Day Forecast' : 'Central Alberta 7-Day Forecast') + ' · v5.8';
 }
 function viewFromHash() {
   const h = (location.hash || '').replace('#', '').toLowerCase();

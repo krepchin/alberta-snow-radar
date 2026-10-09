@@ -2,18 +2,25 @@
  * alberta-snow-events: TEST snow-event recorder (Cloudflare Worker + D1 + Cron every 5 min).
  *
  * Separate from the map. It only READS public data:
- *   - Open-Meteo current + hourly model weather for Three Hills, Drumheller and Stettler
+ *   - Open-Meteo current + hourly model weather for Three Hills, Drumheller, Stettler (CMA 517) and Castor, Consort, Czar (CMA 518)
  *   - alberta-plow-relay /roads and /plows (511 Alberta), via a read-only service binding
  *     (falls back to the public workers.dev URL)
  * Nothing is recorded until an event opens (see ARMING). Kill switch: var EVENTS_ENABLED = "false".
  * Nothing here is invented: missing inputs are stored as null and never treated as "bare" or "no snow".
+ * Trucks: Emcon only (owner matches /emcon|mcon/i). Mainroad and other contractors' trucks are dropped on input and never stored.
  */
 const TOWNS = [
-  { id: 'th', name: 'Three Hills', lat: 51.70722, lon: -113.26472 },
-  { id: 'dr', name: 'Drumheller', lat: 51.46444, lon: -112.71889 },
-  { id: 'st', name: 'Stettler', lat: 52.32389, lon: -112.70444 }
+  { id: 'th', name: 'Three Hills', lat: 51.70722, lon: -113.26472, cma: '517' },
+  { id: 'dr', name: 'Drumheller', lat: 51.46444, lon: -112.71889, cma: '517' },
+  { id: 'st', name: 'Stettler', lat: 52.32389, lon: -112.70444, cma: '517' },
+  // CMA 518 weather points (Oct 8 2026; coordinates from Open-Meteo geocoding / GeoNames)
+  { id: 'ca', name: 'Castor', lat: 52.21684, lon: -111.88509, cma: '518' },
+  { id: 'co', name: 'Consort', lat: 52.01683, lon: -110.76836, cma: '518' },
+  { id: 'cz', name: 'Czar', lat: 52.45013, lon: -110.83494, cma: '518' }
 ];
 const CMA517 = ['CMA 517 - Three Hills', 'CMA 517 - Drumheller', 'CMA 517 - Stettler'];
+// CMA 518 is recorded in its own fields (cma518 / nbc518 / towns with cma '518') and opens/continues events the same way as CMA 517.
+const CMA518 = ['CMA 518 - Castor', 'CMA 518 - Consort', 'CMA 518 - Czar'];
 const RELAY_PUBLIC = 'https://alberta-plow-relay.krepchin.workers.dev';
 const OM = 'https://api.open-meteo.com/v1/forecast?' + new URLSearchParams({
   latitude: TOWNS.map(t => t.lat).join(','), longitude: TOWNS.map(t => t.lon).join(','),
@@ -47,7 +54,7 @@ export default {
     try {
       if (p === '/') return new Response('alberta-snow-events (TEST): GET /events/config · /events/status · /events · /events/{id} · /events/{id}/csv. Data: Open-Meteo, 511 Alberta.\n',
         { headers: { 'Content-Type': 'text/plain; charset=utf-8', ...cors } });
-      if (p === '/events/config') return json({ enabled: enabled(env), test_mode: true }, 200, { ...cors, 'Cache-Control': 'public, max-age=60' });
+      if (p === '/events/config') return json({ enabled: enabled(env), test_mode: true, trucks: 'emcon' }, 200, { ...cors, 'Cache-Control': 'public, max-age=60' });
       if (p === '/events/status') return json(await status(env), 200, cors);
       const tm = /^\/events\/test\/(start|stop|clear|snapshot)$/.exec(p);
       if (tm) return testAction(tm[1], url, env, ctx, cors);
@@ -129,7 +136,7 @@ async function getRoads(env) {
 async function getPlows(env) {
   const j = await relayJson(env, '/plows', 10000);
   if (!j || !Array.isArray(j.vehicles) || !j.generated) throw new Error(j && j.error ? j.error : 'no plow data');
-  return j.vehicles.filter(v => isFinite(v.lat) && isFinite(v.lon)).map(v => ({
+  return j.vehicles.filter(v => isFinite(v.lat) && isFinite(v.lon) && group(v.owner) === 'emcon').map(v => ({   // Emcon only
     id: String(v.id), owner: v.owner || '', g: group(v.owner), lat: v.lat, lon: v.lon,
     heading: typeof v.heading === 'number' ? v.heading : null, upd: v.updated ? Date.parse(v.updated) : null
   }));
@@ -157,6 +164,7 @@ async function runCheck(env, opts = {}) {
   const snowRecent2h = wx ? TOWNS.some(t => (wx[t.id].s15 || 0) > 0 || wx[t.id].hours.some(([ht, v]) => ht > now - CLOSE_SNOW_MS && ht <= now + 5 * MIN && (v || 0) > 0)) : null;
   const snowNext12h = wx ? TOWNS.some(t => wx[t.id].hours.some(([ht, v]) => ht > now && (v || 0) > 0)) : null;
   const cmaNonBare = segs ? Object.entries(segs).filter(([, s]) => CMA517.includes(s.a) && isWinter(s.c)) : null;
+  const cma518NonBare = segs ? Object.entries(segs).filter(([, s]) => CMA518.includes(s.a) && isWinter(s.c)) : null;
   const moves = {};
   let emconMoving = false, emconReporting = false;
   if (plows) {
@@ -175,6 +183,7 @@ async function runCheck(env, opts = {}) {
   const reasons = [];
   if (snowNow && snowNow.length) reasons.push('Open-Meteo snowfall now at ' + snowNow.join(', '));
   if (cmaNonBare && cmaNonBare.length) reasons.push(cmaNonBare.length + ' CMA 517 segment(s) not bare: ' + [...new Set(cmaNonBare.map(([, s]) => s.c))].join(', '));
+  if (cma518NonBare && cma518NonBare.length) reasons.push(cma518NonBare.length + ' CMA 518 segment(s) not bare: ' + [...new Set(cma518NonBare.map(([, s]) => s.c))].join(', '));
   if (emconMoving && snowNext12h) reasons.push('Emcon truck(s) moving with snow in the next 12 h forecast');
 
   // ----- event lifecycle -----
@@ -192,9 +201,9 @@ async function runCheck(env, opts = {}) {
       .bind(now, isTest ? 1 : 0, isTest ? 'TEST (manually started)' : reasons.join('; '), now).first();
     ev = r; opened = true;
   } else if (ev && !ev.is_test) {
-    const canClose = cmaNonBare && cmaNonBare.length === 0 && snowRecent2h === false && !emconReporting &&
+    const canClose = cmaNonBare && cmaNonBare.length === 0 && cma518NonBare && cma518NonBare.length === 0 && snowRecent2h === false && !emconReporting &&
       (!emconMovedAt || now - emconMovedAt >= CLOSE_EMCON_MS) && !emconMoving;
-    if (canClose) { closed = { id: ev.id, reason: 'All CMA 517 segments bare, no Emcon activity 60 min, no snowfall 2 h' }; }
+    if (canClose) { closed = { id: ev.id, reason: 'All CMA 517 and CMA 518 segments bare, no Emcon activity 60 min, no snowfall 2 h' }; }
   }
 
   if (ev) {
@@ -221,9 +230,10 @@ async function runCheck(env, opts = {}) {
   }
   if (emconMovedAt) stmts.push(upsert(db, 'emcon_moved', emconMovedAt, now));
   const check = { t: now, source: opts.source || 'manual', errors, reasons, snow_next_12h: snowNext12h, snow_recent_2h: snowRecent2h,
-    cma517_non_bare: cmaNonBare ? cmaNonBare.length : null, emcon_moving: emconMoving, emcon_reporting_60m: emconReporting,
+    cma517_non_bare: cmaNonBare ? cmaNonBare.length : null,
+    cma518_non_bare: cma518NonBare ? cma518NonBare.length : null, emcon_moving: emconMoving, emcon_reporting_60m: emconReporting,
     open_event: ev ? ev.id : null, opened: opened ? ev.id : null, closed: closed ? closed.id : null,
-    plows_in_box: plows ? plows.length : null, segments_in_box: segs ? Object.keys(segs).length : null };
+    emcon_in_box: plows ? plows.length : null, trucks_scope: 'emcon', segments_in_box: segs ? Object.keys(segs).length : null };
   stmts.push(upsert(db, 'check', check, now));
   if (stmts.length) await db.batch(stmts);
   return check;
@@ -252,20 +262,22 @@ function snapshotStatements(db, ev, now, ctx) {
   }
 
   // road transitions (box), CMA 517 flagged
-  let nonBare = null, nonBareCma = null;
+  let nonBare = null, nonBareCma = null, nonBare518 = null;
   if (segs) {
-    nonBare = 0; nonBareCma = 0;
+    nonBare = 0; nonBareCma = 0; nonBare518 = 0;
     for (const [id, s] of Object.entries(segs)) {
       const cma = CMA517.includes(s.a) ? 1 : 0;
-      if (isWinter(s.c)) { nonBare++; if (cma) nonBareCma++; }
+      const c518 = CMA518.includes(s.a) ? 1 : 0;
+      if (isWinter(s.c)) { nonBare++; if (cma) nonBareCma++; if (c518) nonBare518++; }
       const prev = prevRoads ? prevRoads[id] : undefined;
       let from = null, record = false;
-      if (first || prev === undefined) record = isWinter(s.c) || (cma && first);   // initial state
+      if (first || prev === undefined) record = isWinter(s.c) || ((cma || c518) && first);   // initial state
       else if (prev !== s.c) { from = prev; record = true; }
       if (!record) continue;
-      out.push(db.prepare('INSERT INTO transitions (event_id, t, seg_id, road, location, area, cma517, from_cond, to_cond, seg_updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        .bind(ev.id, now, id, s.r, s.l, s.a, cma, from, s.c, s.u));
+      out.push(db.prepare('INSERT INTO transitions (event_id, t, seg_id, road, location, area, cma517, cma518, from_cond, to_cond, seg_updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .bind(ev.id, now, id, s.r, s.l, s.a, cma, c518, from, s.c, s.u));
       if (cma && isWinter(s.c) && !summary.first_nonbare_t) { summary.first_nonbare_t = now; summary.first_nonbare_seg = s.r + ' ' + s.l; }
+      if (c518 && isWinter(s.c) && !summary.cma518_first_nonbare_t) { summary.cma518_first_nonbare_t = now; summary.cma518_first_nonbare_seg = s.r + ' ' + s.l; }
     }
   }
 
@@ -297,11 +309,11 @@ function snapshotStatements(db, ev, now, ctx) {
         dep.back = tr.lastSeen || now; dep.end = 'left feed'; tr.out = false;
       }
     }
-    outCount = { emcon: 0, mainroad: 0, other: 0 };
-    for (const tr of Object.values(trucks)) if (tr.out) outCount[tr.g]++;
+    outCount = { emcon: 0 };
+    for (const tr of Object.values(trucks)) if (tr.out && tr.g === 'emcon') outCount.emcon++;
   }
 
-  const data = { t: now, w, out: outCount, nb: nonBare, nbc: nonBareCma, pl: plows ? plows.length : null, err: Object.keys(errors).length ? errors : undefined };
+  const data = { t: now, w, out: outCount, nb: nonBare, nbc: nonBareCma, nbc518: nonBare518, pl: plows ? plows.length : null, err: Object.keys(errors).length ? errors : undefined };
   const raw = plows ? plows.map(v => [v.id, v.owner, v.lat, v.lon, v.heading, v.upd]) : null;
   out.push(db.prepare('INSERT OR REPLACE INTO snapshots (event_id, t, data, plows) VALUES (?, ?, ?, ?)').bind(ev.id, now, JSON.stringify(data), raw ? JSON.stringify(raw) : null));
 
@@ -318,23 +330,21 @@ function snapshotStatements(db, ev, now, ctx) {
     if (x.vis != null) s.min_vis = s.min_vis == null ? x.vis : Math.min(s.min_vis, x.vis);
   }
   if (outCount) {
-    summary.max_out = summary.max_out || { all: 0, emcon: 0, mainroad: 0, other: 0 };
-    const all = outCount.emcon + outCount.mainroad + outCount.other;
-    summary.max_out.all = Math.max(summary.max_out.all, all);
-    for (const g of ['emcon', 'mainroad', 'other']) summary.max_out[g] = Math.max(summary.max_out[g], outCount[g]);
+    summary.max_out = { emcon: Math.max((summary.max_out && summary.max_out.emcon) || 0, outCount.emcon) };
   }
   Object.assign(summary, truckTotals(trucks, now));
   if (nonBareCma != null) summary.max_nonbare_cma = Math.max(summary.max_nonbare_cma || 0, nonBareCma);
+  if (nonBare518 != null) summary.max_nonbare_cma518 = Math.max(summary.max_nonbare_cma518 || 0, nonBare518);
   summary.lag_min = summary.first_nonbare_t && summary.first_emcon_out ? Math.round((summary.first_emcon_out - summary.first_nonbare_t) / MIN) : null;
   out.push(db.prepare('UPDATE events SET summary = ?, trucks = ?, wx = ?, updated = ? WHERE id = ?')
     .bind(JSON.stringify(summary), JSON.stringify(trucks), JSON.stringify(wxAcc), now, ev.id));
   return out;
 }
 function truckTotals(trucks, now) {
-  const hours = { emcon: 0, mainroad: 0, other: 0 }, deployed = { emcon: 0, mainroad: 0, other: 0 };
+  const hours = { emcon: 0 }, deployed = { emcon: 0 };
   let firstEmcon = null;
   for (const tr of Object.values(trucks)) {
-    if (!tr.deps.length) continue;
+    if (tr.g !== 'emcon' || !tr.deps.length) continue;
     deployed[tr.g]++;
     for (const d of tr.deps) {
       hours[tr.g] += ((d.back || now) - d.out) / 3600000;
@@ -373,10 +383,10 @@ async function eventDetail(env, id, cors) {
   const ev = await env.DB.prepare('SELECT id, started, ended, is_test, status, open_reason, close_reason, summary, trucks FROM events WHERE id = ?').bind(id).first();
   if (!ev) return json({ error: 'no such event' }, 404, cors);
   const snaps = (await env.DB.prepare('SELECT data FROM snapshots WHERE event_id = ? ORDER BY t').bind(id).all()).results;
-  const trs = (await env.DB.prepare('SELECT t, seg_id, road, location, area, cma517, from_cond, to_cond, seg_updated FROM transitions WHERE event_id = ? ORDER BY seg_id, t').bind(id).all()).results;
+  const trs = (await env.DB.prepare('SELECT t, seg_id, road, location, area, cma517, cma518, from_cond, to_cond, seg_updated FROM transitions WHERE event_id = ? ORDER BY seg_id, t').bind(id).all()).results;
   const head = { id: ev.id, started: ev.started, ended: ev.ended, is_test: ev.is_test, status: ev.status, open_reason: ev.open_reason, close_reason: ev.close_reason, now: Date.now() };
   const body = '{"event":' + JSON.stringify(head) + ',"summary":' + (ev.summary || '{}') + ',"trucks":' + (ev.trucks || '{}') +
-    ',"towns":' + JSON.stringify(TOWNS.map(t => ({ id: t.id, name: t.name }))) +
+    ',"towns":' + JSON.stringify(TOWNS.map(t => ({ id: t.id, name: t.name, cma: t.cma, lat: t.lat, lon: t.lon }))) +
     ',"snapshots":[' + snaps.map(s => s.data).join(',') + '],"transitions":' + JSON.stringify(trs) + '}';
   return json(body, 200, cors);
 }
@@ -396,18 +406,29 @@ async function eventCsv(env, id, cors) {
   const row = a => L.push(a.map(csvCell).join(','));
   row(['# Central Alberta snow event ' + id + (ev.is_test ? ' (TEST)' : ''), 'started_utc=' + iso(ev.started), 'ended_utc=' + iso(ev.ended), 'opened: ' + (ev.open_reason || ''), 'closed: ' + (ev.close_reason || '')]);
   row(['# Weather = Open-Meteo model (not observations); roads + plows = 511 Alberta. Times UTC ISO-8601.']);
+  row(['# Trucks: Emcon only (Mainroad and other contractors are not recorded)']);
   L.push('');
-  row(['section', 'time_utc', 'town', 'snowfall_rate_cm_per_h', 'snowfall_15min_cm', 'accum_since_start_cm', 'temp_c', 'wind_kmh', 'gust_kmh', 'visibility_m', 'weather_code', 'trucks_out_emcon', 'trucks_out_mainroad', 'trucks_out_other', 'cma517_non_bare_segments', 'box_non_bare_segments']);
-  for (const s of snaps) for (const t of TOWNS) {
-    const w = (s.w || {})[t.id] || {};
-    row(['weather', iso(s.t), t.name, w.rate, w.s15, w.acc, w.temp, w.wind, w.gust, w.vis, w.code, s.out && s.out.emcon, s.out && s.out.mainroad, s.out && s.out.other, s.nbc, s.nb]);
+  row(['section', 'time_utc', 'town', 'cma', 'snowfall_rate_cm_per_h', 'snowfall_15min_cm', 'accum_since_start_cm', 'temp_c', 'wind_kmh', 'gust_kmh', 'visibility_m', 'weather_code', 'emcon_trucks_out', 'emcon_trucks_reporting_in_box', 'cma517_non_bare_segments', 'cma518_non_bare_segments', 'box_non_bare_segments']);
+  for (const cma of ['517', '518']) {
+    if (cma === '518') { L.push(''); row(['# CMA 518 weather (Castor, Consort, Czar)']); }
+    for (const s of snaps) for (const t of TOWNS.filter(x => x.cma === cma)) {
+      if (!(t.id in (s.w || {}))) continue;   // snapshot taken before this town was added
+      const w = (s.w || {})[t.id] || {};
+      row([t.cma === '518' ? 'weather_cma518' : 'weather', iso(s.t), t.name, 'CMA ' + t.cma, w.rate, w.s15, w.acc, w.temp, w.wind, w.gust, w.vis, w.code, s.out && s.out.emcon, s.pl, s.nbc, s.nbc518, s.nb]);
+    }
   }
   L.push('');
-  row(['section', 'observed_utc', 'segment_id', 'area', 'road', 'location', 'cma517', 'from_condition', 'to_condition', 'segment_511_updated_utc']);
-  for (const r of trs) row(['road', iso(r.t), r.seg_id, r.area, r.road, r.location, r.cma517, r.from_cond == null ? '(initial)' : r.from_cond, r.to_cond, iso(r.seg_updated)]);
+  const roadRows = (label, list) => {
+    row(['section', 'observed_utc', 'segment_id', 'area', 'road', 'location', 'cma517', 'cma518', 'from_condition', 'to_condition', 'segment_511_updated_utc']);
+    for (const r of list) row([label, iso(r.t), r.seg_id, r.area, r.road, r.location, r.cma517, r.cma518 || 0, r.from_cond == null ? '(initial)' : r.from_cond, r.to_cond, iso(r.seg_updated)]);
+  };
+  roadRows('road', trs.filter(r => !r.cma518));
+  L.push('');
+  row(['# CMA 518 (Castor, Consort, Czar) - recorded separately; not used to open or close events']);
+  roadRows('road_cma518', trs.filter(r => r.cma518));
   L.push('');
   row(['section', 'truck_id', 'owner', 'group', 'out_utc', 'back_utc', 'hours', 'start', 'end']);
-  for (const [tid, tr] of Object.entries(trucks)) for (const d of tr.deps) {
+  for (const [tid, tr] of Object.entries(trucks)) if (tr.g === 'emcon') for (const d of tr.deps) {
     row(['deployment', tid, tr.owner, tr.g, iso(d.out), iso(d.back), d.back ? round((d.back - d.out) / 3600000, 2) : '', d.why, d.end || (d.back ? '' : 'still out')]);
   }
   return new Response(L.join('\r\n') + '\r\n', { headers: { 'Content-Type': 'text/csv; charset=utf-8',

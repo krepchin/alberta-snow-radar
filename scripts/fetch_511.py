@@ -21,9 +21,9 @@ TIP = "https://511.alberta.ca/tooltip/ServiceVehicles/{id}?lang=en"
 ROADS = "https://511.alberta.ca/api/v3/get/winterroads?key={key}&format=json"
 LIVE = "https://krepchin.github.io/alberta-snow-radar/data/"
 # Central Alberta view: tooltips + output clipping
-LAT0, LAT1, LON0, LON1 = 51.0, 52.8, -114.5, -111.5
+LAT0, LAT1, LON0, LON1 = 51.0, 52.8, -114.5, -109.9  # v5.8: east edge to the Sask. border for CMA 518
 # Slightly larger box for roads so lines don't stop at the screen edge
-RLAT0, RLAT1, RLON0, RLON1 = 50.7, 53.1, -115.0, -111.0
+RLAT0, RLAT1, RLON0, RLON1 = 50.7, 53.1, -115.0, -109.9  # v5.8: CMA 518 segments reach lon -110.004
 SIMPLIFY_DEG = 0.0002  # Douglas-Peucker tolerance for road lines (~15-22 m); same as worker/worker.js
 MAX_TIPS = 45
 TIP_GAP = 0.7  # seconds between tooltip requests

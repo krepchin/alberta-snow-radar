@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#05080f" />
-<title>Central Alberta Snow Events (TEST) · v5.7</title>
+<title>Central Alberta Snow Events (TEST) · v5.8</title>
 <script>document.documentElement.className += ' js';</script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -126,6 +126,8 @@
   .banner { margin: 0 0 0.8rem; padding: 0.5rem 0.75rem; border-radius: 10px; font: 500 0.72rem/1.45 var(--mono); color: #fde68a;
     background: rgba(42, 26, 8, 0.55); border: 1px dashed rgba(251,191,36,0.55); }
   .banner b { color: #fff; }
+  .banner.drive { color: #bae6fd; border-color: rgba(56, 189, 248, 0.4); background: rgba(56, 189, 248, 0.07); }
+  .banner.drive a { color: #7dd3fc; }
   .h2 { display: flex; align-items: center; gap: 0.5rem; margin: 1.1rem 0 0.55rem; font-size: 1.05rem; font-weight: 600; }
   .h2::before { content: ''; width: 14px; height: 2px; background: var(--teal); box-shadow: 0 0 6px var(--teal); border-radius: 2px; }
   .h2 .sub { margin-left: auto; font: 500 0.66rem/1.3 var(--mono); color: var(--muted); letter-spacing: 0.04em; }
@@ -223,7 +225,7 @@
   <div class="brand">
     <div class="scope" aria-hidden="true"></div>
     <div>
-      <div class="title-row"><h1><span class="h1-long">Central Alberta </span>Snow Events</h1><span class="ver" title="Version 5.7 (events TEST)">v5.7</span></div>
+      <div class="title-row"><h1><span class="h1-long">Central Alberta </span>Snow Events</h1><span class="ver" title="Version 5.8 (events TEST)">v5.8</span></div>
       <p class="sub">Weather · 511 roads · plow deployments</p>
     </div>
   </div>
@@ -233,7 +235,8 @@
 </header>
 </div>
 <main>
-  <p class="banner"><b>TEST deployment.</b> Snow-event tracking is being trialled and may be switched off or removed. Weather is Open-Meteo model data (not observations); roads and plows are 511 Alberta.</p>
+  <p class="banner"><b>TEST deployment.</b> Snow-event tracking is being trialled and may be switched off or removed. Weather is Open-Meteo model data (not observations); roads and plows are 511 Alberta. Trucks: Emcon only.</p>
+  <p class="banner drive">Each event is also saved (full detail: JSON, CSV and a Google Sheet) to the <a href="https://drive.google.com/drive/folders/1sErxu7XxgF7WbbNQ730elKJh6X1m4IIo" target="_blank" rel="noopener">Snow Events folder in Google Drive</a>.</p>
   <div class="status" id="status" data-state="loading" role="status" aria-live="polite">
     <span class="dot" aria-hidden="true"></span>
     <span class="msg" id="statusMsg">Loading snow events…</span>
@@ -241,22 +244,23 @@
   </div>
   <div id="view"></div>
   <p class="foot">
-    Recorder: a 5-minute check (Cloudflare Worker). An event opens when Open-Meteo shows snowfall at Three Hills, Drumheller or Stettler,
-    when any 511 segment in CMA 517 (Three Hills, Drumheller, Stettler) reports a condition other than Bare / No Report / Closed,
-    or when Emcon trucks move with snow in the next-12-hour forecast. It closes when CMA 517 is bare again, Emcon has been quiet for 60 min
+    Recorder: a 5-minute check (Cloudflare Worker). An event opens when Open-Meteo shows snowfall at Three Hills, Drumheller or Stettler (CMA 517) or Castor, Consort or Czar (CMA 518),
+    when any 511 segment in CMA 517 or CMA 518 reports a condition other than Bare / No Report / Closed,
+    or when Emcon trucks move with snow in the next-12-hour forecast. It closes when CMA 517 and CMA 518 are bare again, Emcon has been quiet for 60 min
     and no snow has fallen for 2 h. Truck “out” = first moved (&gt; 250 m between checks) or newly appeared; “back” = stationary 30 min,
     stopped reporting, or left the feed; times are accurate to about 5 minutes.
     Data: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0) ·
     <a href="https://511.alberta.ca/" target="_blank" rel="noopener">511 Alberta</a>. Demo only. ·
-    <a href="./">Back to the snow radar</a> · v5.7
+    <a href="./">Back to the snow radar</a> · v5.8
   </p>
 </main>
 <script>
 'use strict';
 const EVENTS_API = 'https://alberta-snow-events.krepchin.workers.dev';
 const TZ = 'America/Edmonton';
-const TOWN_COLORS = { th: '#14e0c0', dr: '#c7d2fe', st: '#fbbf24' };
-const GROUP_COLORS = { emcon: '#ff8a1f', mainroad: '#3b82f6', other: '#94a3b8' };
+const TOWN_COLORS = { th: '#14e0c0', dr: '#c7d2fe', st: '#fbbf24', ca: '#f472b6', co: '#a3e635', cz: '#60a5fa' };
+const CMA_OF = { th: '517', dr: '517', st: '517', ca: '518', co: '518', cz: '518' };   // fallback when an old event has no cma on its towns
+const GROUP_COLORS = { emcon: '#ff8a1f' };   // snow events track Emcon trucks only
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const isWinter = c => !!c && !/^(bare|no report|closed)/i.test(String(c).trim());
@@ -328,7 +332,6 @@ function statsHtml(e) {
   const end = e.ended || s.last_t || Date.now();
   const m = maxAcc(s);
   const th = s.truck_hours || {}, dep = s.trucks_deployed || {}, mo = s.max_out || {};
-  const allH = (th.emcon || 0) + (th.mainroad || 0) + (th.other || 0);
   return `<div class="stats">
     <div class="stat"><span class="k">Duration</span><span class="v">${esc(fmtDur(end - e.started))}</span><span class="s">${esc((s.snapshots || 0) + ' snapshots')}</span></div>
     <div class="stat snow"><span class="k">Snowfall</span><span class="v">${m ? n1(m.acc) + '<small>cm</small>' : '—'}</span><span class="s">${m ? esc('max · ' + m.name) : 'no weather data'}</span></div>
@@ -336,9 +339,9 @@ function statsHtml(e) {
     <div class="stat emcon"><span class="k">Emcon out</span><span class="v">${dep.emcon || 0}<small>trucks</small></span><span class="s">${esc('max ' + (mo.emcon || 0) + ' at once · ' + n1(th.emcon || 0) + ' truck-h')}</span></div>
   </div>
   <div class="stats" style="margin-top:6px">
-    <div class="stat"><span class="k">All trucks out</span><span class="v">${(dep.emcon || 0) + (dep.mainroad || 0) + (dep.other || 0)}</span><span class="s">${esc('max ' + (mo.all || 0) + ' at once')}</span></div>
-    <div class="stat"><span class="k">Truck-hours</span><span class="v">${n1(allH)}<small>h</small></span><span class="s">${esc('Mainroad ' + n1(th.mainroad || 0) + ' · other ' + n1(th.other || 0))}</span></div>
+    <div class="stat"><span class="k">Emcon truck-hours</span><span class="v">${n1(th.emcon || 0)}<small>h</small></span><span class="s">Emcon only</span></div>
     <div class="stat"><span class="k">CMA 517 non-bare</span><span class="v">${s.max_nonbare_cma || 0}<small>max</small></span><span class="s">segments at once</span></div>
+    <div class="stat"><span class="k">CMA 518 non-bare</span><span class="v">${s.max_nonbare_cma518 == null ? '—' : s.max_nonbare_cma518 + '<small>max</small>'}</span><span class="s">${s.max_nonbare_cma518 == null ? 'not recorded' : 'segments at once'}</span></div>
     <div class="stat"><span class="k">Coldest</span><span class="v">${coldest(s)}</span><span class="s">model temp</span></div>
   </div>`;
 }
@@ -354,15 +357,15 @@ async function showList() {
   const v = $('view');
   const lc = st && st.last_check;
   const checkTxt = lc ? `Last check ${fmtDT(lc.t)} (${fmtAgo(lc.t)}): ` +
-    (lc.reasons && lc.reasons.length ? lc.reasons.join('; ') : 'no snowfall at the three towns, ' + (lc.cma517_non_bare == null ? '?' : lc.cma517_non_bare) + ' CMA 517 segments non-bare, ' +
-      (lc.snow_next_12h ? 'snow in the next 12 h forecast' : 'no snow in the next 12 h forecast') + ', ' + (lc.plows_in_box == null ? '?' : lc.plows_in_box) + ' plows in the map area.') : 'No check has run yet.';
+    (lc.reasons && lc.reasons.length ? lc.reasons.join('; ') : 'no snowfall at the six towns, ' + (lc.cma517_non_bare == null ? '?' : lc.cma517_non_bare) + ' CMA 517 segments non-bare, ' + (lc.cma518_non_bare == null ? '' : lc.cma518_non_bare + ' CMA 518 segments non-bare, ') +
+      (lc.snow_next_12h ? 'snow in the next 12 h forecast' : 'no snow in the next 12 h forecast') + ', ' + (lc.emcon_in_box == null ? (lc.plows_in_box == null ? '?' : lc.plows_in_box + ' plows') : lc.emcon_in_box + ' Emcon trucks') + ' in the map area.') : 'No check has run yet.';
   if (!list.enabled) {
     v.innerHTML = `<div class="waiting"><h2>Event recording is switched off</h2><p>Past events stay listed below if any were recorded.</p></div>`;
   } else v.innerHTML = '';
   const evs = list.events || [];
   const real = evs.filter(e => !e.is_test);
   if (!real.length && list.enabled) {
-    v.insertAdjacentHTML('beforeend', `<div class="waiting"><h2>Waiting for the first snow event of the season</h2><p>Recording starts on its own when Open-Meteo shows snow falling at Three Hills, Drumheller or Stettler, a CMA 517 road is reported non-bare, or Emcon trucks move with snow in the 12 h forecast.${evs.length ? ' Entries marked TEST below are short samples, not real events.' : ''}</p></div>`);
+    v.insertAdjacentHTML('beforeend', `<div class="waiting"><h2>Waiting for the first snow event of the season</h2><p>Recording starts on its own when Open-Meteo shows snow falling at Three Hills, Drumheller or Stettler (CMA 517) or Castor, Consort or Czar (CMA 518), a CMA 517 or CMA 518 road is reported non-bare, or Emcon trucks move with snow in the 12 h forecast.${evs.length ? ' Entries marked TEST below are short samples, not real events.' : ''}</p></div>`);
   }
   if (evs.length) {
     v.insertAdjacentHTML('beforeend', `<h2 class="h2">Events <span class="sub">newest first</span></h2><ul class="cards">` + evs.map(e => `
@@ -422,15 +425,18 @@ async function showEvent(id) {
   const d = await getJson('/events/' + id);
   const e = d.event, s = d.summary || {}, snaps = d.snapshots || [], towns = d.towns || [];
   const t0 = e.started, t1 = e.ended || Math.max(e.now, s.last_t || e.started);
-  const ser = key => towns.map(tw => ({ name: tw.name, color: TOWN_COLORS[tw.id] || '#fff', points: snaps.map(sn => [sn.t, sn.w && sn.w[tw.id] ? sn.w[tw.id][key] : null]) }));
-  const rateBars = { name: 'snowfall rate, 3-town mean cm/h', color: '#c7d2fe', points: snaps.map(sn => {
+  const cmaOf = tw => tw.cma || CMA_OF[tw.id] || '517';
+  const hasData = tw => snaps.some(sn => sn.w && tw.id in sn.w);
+  const townsBy = cma => towns.filter(tw => cmaOf(tw) === cma && hasData(tw));
+  const ser = (key, list = towns) => list.map(tw => ({ name: tw.name, color: TOWN_COLORS[tw.id] || '#fff', points: snaps.map(sn => [sn.t, sn.w && sn.w[tw.id] ? sn.w[tw.id][key] : null]) }));
+  const rateBars = { name: 'snowfall rate, town mean cm/h', color: '#c7d2fe', points: snaps.map(sn => {
     const v = towns.map(tw => sn.w && sn.w[tw.id] ? sn.w[tw.id].rate : null).filter(x => x != null);
     return [sn.t, v.length ? v.reduce((a, b) => a + b, 0) / v.length : null];
   }) };
-  const outSeries = ['emcon', 'mainroad', 'other'].map(g => ({ name: { emcon: 'Emcon out', mainroad: 'Mainroad out', other: 'Other out' }[g], color: GROUP_COLORS[g],
-    points: snaps.map(sn => [sn.t, sn.out ? sn.out[g] : null]) }));
+  const outSeries = [{ name: 'Emcon out', color: GROUP_COLORS.emcon, points: snaps.map(sn => [sn.t, sn.out ? sn.out.emcon : null]) }];
   const last = snaps[snaps.length - 1];
-  const wxNow = last && last.w ? towns.map(tw => {
+  const wxNowFor = list => !list.length ? '<p class="muted" style="margin:0;font:500 .74rem/1.5 var(--mono)">No weather recorded for these towns in this event (CMA 518 weather points were added Oct 8, 2026, after this event).</p>'
+    : last && last.w ? list.map(tw => {
     const w = last.w[tw.id];
     return `<div class="stat"><span class="k">${esc(tw.name)}</span>${w ? `<span class="v">${n1(w.temp)}<small>°C</small> · ${n1(w.rate)}<small>cm/h</small></span>
       <span class="s">${esc('wind ' + (w.wind ?? '—') + ' g ' + (w.gust ?? '—') + ' km/h · vis ' + (w.vis == null ? '—' : (w.vis / 1000).toFixed(1) + ' km'))}</span>
@@ -445,18 +451,26 @@ async function showEvent(id) {
     let winterMs = 0;
     list.forEach((r, i) => { if (isWinter(r.to_cond)) winterMs += (i + 1 < list.length ? list[i + 1].t : t1) - r.t; });
     const changes = list.filter(r => r.from_cond != null).length;
-    return { list, winterMs, changes, cma: list[0].cma517, everWinter: list.some(r => isWinter(r.to_cond)) };
+    return { list, winterMs, changes, cma: list[0].cma517, c518: list[0].cma518 || 0, everWinter: list.some(r => isWinter(r.to_cond)) };
   });
-  const interesting = segRows.filter(r => r.everWinter || r.changes).sort((a, b) => b.cma - a.cma || b.winterMs - a.winterMs);
+  const segRows518 = segRows.filter(r => r.c518);
+  const segRows517 = segRows.filter(r => !r.c518);
+  const interesting = segRows517.filter(r => r.everWinter || r.changes).sort((a, b) => b.cma - a.cma || b.winterMs - a.winterMs);
   const cmaCount = segRows.filter(r => r.cma).length;
-  const areaCounts = {};
+  const areaCounts = {}, areaCounts518 = {};
   segRows.filter(r => r.cma).forEach(r => { const a = r.list[0].area.replace('CMA 517 - ', ''); areaCounts[a] = (areaCounts[a] || 0) + 1; });
-  const segHtml = interesting.length ? interesting.map(r => {
+  segRows518.forEach(r => { const a = r.list[0].area.replace('CMA 518 - ', ''); areaCounts518[a] = (areaCounts518[a] || 0) + 1; });
+  const segCard = r => {
     const f = r.list[0];
     return `<div class="seg${r.everWinter ? ' winter' : ''}"><div class="seg-hd"><span>${esc(f.road)}</span><span class="dur">${r.winterMs ? esc('snowy ' + fmtDur(r.winterMs)) : ''}</span></div>
       <div class="seg-loc">${esc(f.location)} · ${esc(f.area)}</div>
       <div class="chips">${r.list.map(x => `<span class="chip ${isWinter(x.to_cond) ? 'w' : /^bare/i.test(x.to_cond || '') ? 'b' : ''}"><time>${esc(fmtT(x.t))}</time>${x.from_cond == null ? 'start: ' : ''}${esc(x.to_cond || '—')}</span>`).join('')}</div></div>`;
-  }).join('') : `<p class="muted" style="margin:0;font:500 .74rem/1.5 var(--mono)">No condition changes recorded. All ${cmaCount} CMA 517 segments (${esc(Object.entries(areaCounts).map(([a, n]) => a + ' ' + n).join(', '))}) were ${esc([...new Set(segRows.filter(r => r.cma).map(r => r.list[r.list.length - 1].to_cond))].join(' / ') || 'unreported')} throughout.</p>`;
+  };
+  const interesting518 = segRows518.filter(r => r.everWinter || r.changes).sort((a, b) => b.winterMs - a.winterMs);
+  const seg518Html = !segRows518.length ? '<p class="muted" style="margin:0;font:500 .74rem/1.5 var(--mono)">No CMA 518 data in this event (CMA 518 recording started Oct 8, 2026, after this event).</p>'
+    : interesting518.length ? interesting518.map(segCard).join('')
+    : `<p class="muted" style="margin:0;font:500 .74rem/1.5 var(--mono)">No condition changes recorded. All ${segRows518.length} CMA 518 segments (${esc(Object.entries(areaCounts518).map(([a, n]) => a + ' ' + n).join(', '))}) were ${esc([...new Set(segRows518.map(r => r.list[r.list.length - 1].to_cond))].join(' / ') || 'unreported')} throughout.</p>`;
+  const segHtml = interesting.length ? interesting.map(segCard).join('') : `<p class="muted" style="margin:0;font:500 .74rem/1.5 var(--mono)">No condition changes recorded. All ${cmaCount} CMA 517 segments (${esc(Object.entries(areaCounts).map(([a, n]) => a + ' ' + n).join(', '))}) were ${esc([...new Set(segRows.filter(r => r.cma).map(r => r.list[r.list.length - 1].to_cond))].join(' / ') || 'unreported')} throughout.</p>`;
 
   // trucks
   const trucks = Object.entries(d.trucks || {}).map(([tid, tr]) => ({ tid, ...tr }));
@@ -478,19 +492,22 @@ async function showEvent(id) {
         <span class="tags">${e.is_test ? '<span class="tag test">TEST</span>' : ''}<span class="tag ${e.status === 'open' ? 'open' : 'closed'}">${e.status === 'open' ? 'Recording' : 'Closed'}</span></span></div>
       ${statsHtml({ ...e, summary: s })}
     </div>
-    <h2 class="h2">Weather <span class="sub">${last ? 'latest ' + esc(fmtT(last.t)) : ''}</span></h2>
-    <div class="wxnow">${wxNow}</div>
-    <div class="panel" style="margin-top:8px">${lineChart({ series: ser('acc'), yLabel: 'snowfall since start, cm (model hourly totals)', t0, t1 })}</div>
-    <div class="panel" style="margin-top:8px">${lineChart({ series: ser('temp'), yLabel: 'temperature °C', t0, t1, height: 150 })}</div>
-    <h2 class="h2">Plows out vs snowfall <span class="sub">${esc(trucks.length + ' trucks seen in the map area')}</span></h2>
+    ${['517', '518'].map(cma => { const tl = townsBy(cma); return `
+    <h2 class="h2">Weather · CMA ${cma} <span class="sub">${esc(cma === '517' ? 'Three Hills, Drumheller, Stettler' : 'Castor, Consort, Czar')}${last && tl.length ? ' · latest ' + esc(fmtT(last.t)) : ''}</span></h2>
+    <div class="wxnow">${wxNowFor(tl)}</div>
+    ${tl.length ? `<div class="panel" style="margin-top:8px">${lineChart({ series: ser('acc', tl), yLabel: 'snowfall since start, cm (model hourly totals)', t0, t1 })}</div>
+    <div class="panel" style="margin-top:8px">${lineChart({ series: ser('temp', tl), yLabel: 'temperature °C', t0, t1, height: 150 })}</div>` : ''}`; }).join('')}
+    <h2 class="h2">Emcon trucks out vs snowfall <span class="sub">${esc(emconSeen + ' Emcon trucks seen in the map area')}</span></h2>
     <div class="panel">${lineChart({ series: outSeries, bars: rateBars, yLabel: 'trucks out', t0, t1, step: true })}
-      <p class="chart-note">Snapshot every 5 min. Bars: Open-Meteo 15-min snowfall ×4 (cm/h), mean of the three towns.</p></div>
+      <p class="chart-note">Snapshot every 5 min. Bars: Open-Meteo 15-min snowfall ×4 (cm/h), mean of the towns recorded (CMA 517 + CMA 518).</p></div>
     <h2 class="h2">Emcon trucks <span class="sub">${esc(emconSeen + ' seen · ' + deps('emcon').length + ' deployed')}</span></h2>
-    <div class="panel">${truckTable(deps('emcon'))}
-      <details class="more"><summary>Mainroad &amp; others (${deps('mainroad').length + deps('other').length} deployed of ${seenBy('mainroad') + seenBy('other')} seen)</summary>${truckTable(deps('mainroad').concat(deps('other')))}</details></div>
-    <h2 class="h2">Road conditions <span class="sub">${esc(cmaCount + ' CMA 517 segments tracked')}</span></h2>
+    <div class="panel">${truckTable(deps('emcon'))}<p class="chart-note">Emcon only. Mainroad and other contractors are not recorded.</p></div>
+    <h2 class="h2">Road conditions · CMA 517 <span class="sub">${esc(cmaCount + ' CMA 517 segments tracked')}</span></h2>
     <p class="areas">${esc(Object.entries(areaCounts).map(([a, n]) => a + ': ' + n).join(' · '))} · plus other segments in the map area when they change.</p>
-    <div class="segs">${segHtml}</div>`;
+    <div class="segs">${segHtml}</div>
+    <h2 class="h2">Road conditions · CMA 518 <span class="sub">${esc(segRows518.length + ' CMA 518 segments tracked')}</span></h2>
+    <p class="areas">${segRows518.length ? esc(Object.entries(areaCounts518).map(([a, n]) => a + ': ' + n).join(' · ')) + ' · ' : ''}Castor, Consort, Czar. A non-bare CMA 518 segment starts or continues an event, the same as CMA 517.</p>
+    <div class="segs">${seg518Html}</div>`;
   wireCsv($('csvLink'));
   setStatus('ok', `Event ${e.id}${e.is_test ? ' (TEST)' : ''}: ${snaps.length} snapshots, last ${last ? fmtAgo(last.t) : '—'}.` + (e.status === 'open' ? ' Updates every minute while open.' : ''));
   schedule(e.status === 'open' ? 60000 : 0);

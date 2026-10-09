@@ -23,7 +23,7 @@ const TIP = id => `https://511.alberta.ca/tooltip/ServiceVehicles/${encodeURICom
 const GH_DATA = 'https://krepchin.github.io/alberta-snow-radar/data/plows.json';
 const UA = 'AlbertaSnowRadar/5.3 (+https://krepchin.github.io/alberta-snow-radar/; ' +
   'personal non-commercial map; fetches every ~5 min via GitHub Actions)';
-const BOX = { lat0: 51.0, lat1: 52.8, lon0: -114.5, lon1: -111.5 };
+const BOX = { lat0: 51.0, lat1: 52.8, lon0: -114.5, lon1: -109.9 };   // v5.8: east edge -111.5 -> -109.9 (Sask. border) to cover all of CMA 518
 const RESP_TTL = 30;              // s, whole /plows response
 const TIP_TTL = 30 * 60;          // s, per-vehicle tooltip
 const MAX_TIPS = 20;              // tooltip subrequests per request
@@ -33,7 +33,7 @@ const RESP_KEY = 'https://alberta-plow-relay.cache/plows/v1';
 const TIPS_KEY = 'https://alberta-plow-relay.cache/tips/v1';
 // Winter road conditions (developer API; key only ever read from env, never echoed)
 const ROADS_API = 'https://511.alberta.ca/api/v3/get/winterroads?format=json&lang=en&key=';
-const RBOX = { lat0: 50.7, lat1: 53.1, lon0: -115.0, lon1: -111.0 };   // = RLAT0/1, RLON0/1 in scripts/fetch_511.py
+const RBOX = { lat0: 50.7, lat1: 53.1, lon0: -115.0, lon1: -109.9 };   // = RLAT0/1, RLON0/1 in scripts/fetch_511.py; v5.8: east -111.0 -> -109.9 for CMA 518 (segments reach -110.004)
 const ROADS_TTL = 180;            // s
 const ROADS_TIMEOUT = 15000;
 const ROADS_KEY = 'https://alberta-plow-relay.cache/roads/v1';

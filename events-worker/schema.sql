@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS snapshots (
   event_id INTEGER NOT NULL,
   t INTEGER NOT NULL,
   data TEXT NOT NULL,                  -- JSON: weather per town, trucks out, non-bare counts
-  plows TEXT,                          -- JSON: raw plow positions [id, owner, lat, lon, heading, updated_ms]
+  plows TEXT,                          -- JSON: raw Emcon plow positions [id, owner, lat, lon, heading, updated_ms] (Emcon only)
   PRIMARY KEY (event_id, t)
 );
 CREATE TABLE IF NOT EXISTS transitions (
@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS transitions (
   seg_id TEXT NOT NULL,
   road TEXT, location TEXT, area TEXT,
   cma517 INTEGER NOT NULL DEFAULT 0,
+  cma518 INTEGER NOT NULL DEFAULT 0,   -- CMA 518 (Castor, Consort, Czar), recorded separately; added Oct 8 2026: ALTER TABLE transitions ADD COLUMN cma518 INTEGER NOT NULL DEFAULT 0
   from_cond TEXT,                      -- null = state when the event opened ('initial')
   to_cond TEXT,
   seg_updated INTEGER                  -- 511 LastUpdated for the segment (ms)
