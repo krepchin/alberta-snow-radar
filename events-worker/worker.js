@@ -427,6 +427,7 @@ async function eventCsv(env, id, cors) {
   const reportT = Date.now();
   const row = a => L.push(a.map(csvCell).join(','));
   row(['# Report generated', mt(reportT)]);
+  row([ev.status === 'open' ? '# Open event, snapshots up to ' + mt(reportT) + ' (latest stored 5-minute check)' : '# Closed event, recorded data as of ' + mt(ev.ended || reportT) + ' (frozen)']);
   row(['# Central Alberta snow event ' + id + (ev.is_test ? ' (TEST)' : ''), 'started_utc=' + iso(ev.started), 'ended_utc=' + iso(ev.ended), 'opened: ' + (ev.open_reason || ''), 'closed: ' + (ev.close_reason || '')]);
   row(['# Weather = Open-Meteo model (not observations); roads + plows = 511 Alberta. Times UTC ISO-8601.']);
   row(['# Trucks: Emcon only (Mainroad and other contractors are not recorded)']);

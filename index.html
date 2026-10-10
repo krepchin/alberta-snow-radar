@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#05080f" />
 <link rel="icon" href="data:," /><!-- no favicon: stops Chrome requesting /favicon.ico (404 console error) -->
-<title>Central Alberta Snow Radar — Sonar Console · v5.8.2</title>
+<title>Central Alberta Snow Radar — Sonar Console · v5.8.3</title>
 <script>document.documentElement.className += ' js';</script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -590,7 +590,7 @@
     .fcbar { display: none; }   /* the 7-day link sits in the town card title at the top of the side column */
   }
   @media (min-width: 1280px) { :root { --side-w: 384px; } }
-  /* v5.8.2 desktop only (not landscape phones): radar source, GeoMet, plows/roads and legend first in the side column,
+  /* v5.8.3 desktop only (not landscape phones): radar source, GeoMet, plows/roads and legend first in the side column,
      so they are visible without scrolling at 1366x768; town card + snowfall table follow. Mobile is untouched. */
   @media (min-width: 721px) and (min-height: 501px) {
     .side .snowcard { order: 0; }
@@ -634,7 +634,7 @@
   <div class="brand">
     <div class="scope" id="scope" aria-hidden="true"><span class="scope-ring" id="scopeRing"></span></div>
     <div>
-      <div class="title-row"><h1><span class="h1-long">Central </span><span class="h1-mid">Alberta </span>Snow Radar</h1><span class="ver" title="Version 5.8.2">v5.8.2</span></div>
+      <div class="title-row"><h1><span class="h1-long">Central </span><span class="h1-mid">Alberta </span>Snow Radar</h1><span class="ver" title="Version 5.8.3">v5.8.3</span></div>
       <p class="sub">Live radar + model snowfall forecast</p>
     </div>
   </div>
@@ -774,11 +774,11 @@
       Town forecast: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> ·
       Plows &amp; road conditions: <a href="https://511.alberta.ca/" target="_blank" rel="noopener">511 Alberta</a> (unofficial use, may lag or break)<span id="baseAttrib"> ·
       Basemap: Esri World Dark Gray Canvas + World Transportation roads (Esri, HERE, Garmin, &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors, GIS user community)</span>.
-      Demo only — verify travel decisions on official sources. · v5.8.2
+      Demo only — verify travel decisions on official sources. · v5.8.3
     </p>
     <p class="attrib attr-short">
       Data: ECCC <a href="https://eccc-msc.github.io/open-data/msc-geomet/readme_en/" target="_blank" rel="noopener">MSC GeoMet</a> ·
-      <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> · plows: <a href="https://511.alberta.ca/" target="_blank" rel="noopener">511 Alberta</a> · basemap in map credits. Demo only · v5.8.2
+      <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> · plows: <a href="https://511.alberta.ca/" target="_blank" rel="noopener">511 Alberta</a> · basemap in map credits. Demo only · v5.8.3
     </p>
   </section>
   </div>
@@ -1322,9 +1322,11 @@ function updateChrome() {
   ['fcPrev', 'fcPlay', 'fcNext'].forEach(id => { $(id).disabled = !has; });
   if (radarMap) setTimeout(() => radarMap.invalidateSize(), 0);
 }
+let radarFetchedAt = 0;                 // v5.8.3: last radar/forecast layer load (for the visibility catch-up)
 function applySource() {
   updateChrome();
   if (!radarMap) return Promise.resolve();
+  radarFetchedAt = Date.now();
   const p = mode === 'live' ? loadLive() : loadForecast();
   return p.catch(e => {
     console.error(e);
@@ -2074,12 +2076,17 @@ async function boot() {
   loadTownSnow();                        // heavier snowfall history + forecast, independent
   setInterval(loadCurrent, CUR_REFRESH_MS);
   setInterval(loadTownSnow, SNOW_REFRESH_MS);
+  // v5.8.3: back on the page (tab switch, phone unlock, Safari bfcache restore) -> re-fetch anything older than 2 min
+  const STALE_MS = 2 * 60 * 1000;
   const catchUp = () => {
     if (document.hidden) return;
-    if (Date.now() - curFetchedAt > CUR_REFRESH_MS) loadCurrent();
-    if (Date.now() - snowFetchedAt > SNOW_REFRESH_MS) loadTownSnow();
+    const now = Date.now();
+    if (now - curFetchedAt > STALE_MS) loadCurrent();
+    if (now - snowFetchedAt > STALE_MS) loadTownSnow();
+    if (radarMap && mode === 'live' && radarFetchedAt && now - radarFetchedAt > STALE_MS) applySource();
   };
   document.addEventListener('visibilitychange', catchUp);
+  window.addEventListener('pageshow', e => { if (e.persisted) catchUp(); });
   window.addEventListener('online', () => { loadCurrent(); loadTownSnow(); });
   setStatus('Loading map library…', 'loading');
   let info;

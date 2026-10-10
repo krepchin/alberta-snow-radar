@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#05080f" />
 <link rel="icon" href="data:," /><!-- no favicon: stops Chrome requesting /favicon.ico (404 console error) -->
-<title>Central Alberta Snow Events · v5.8.2</title>
+<title>Central Alberta Snow Events · v5.8.3</title>
 <script>document.documentElement.className += ' js';</script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -132,7 +132,7 @@
   .h2 .sub { margin-left: auto; font: 500 0.66rem/1.3 var(--mono); color: var(--muted); letter-spacing: 0.04em; }
   .cards { display: grid; gap: 10px; list-style: none; margin: 0; padding: 0; }
   @media (min-width: 900px) { .cards { grid-template-columns: 1fr 1fr; } }
-  /* v5.8.2 desktop only: a lone event card spans the full width; tile subtitles wrap instead of being cut off */
+  /* v5.8.3 desktop only: a lone event card spans the full width; tile subtitles wrap instead of being cut off */
   @media (min-width: 900px) {
     .cards > li:only-child { grid-column: 1 / -1; }
     .stat .s { white-space: normal; overflow: visible; text-overflow: clip; }
@@ -234,7 +234,7 @@
   <div class="brand">
     <div class="scope" aria-hidden="true"></div>
     <div>
-      <div class="title-row"><h1><span class="h1-long">Central Alberta </span>Snow Events</h1><span class="ver" title="Version 5.8.2">v5.8.2</span></div>
+      <div class="title-row"><h1><span class="h1-long">Central Alberta </span>Snow Events</h1><span class="ver" title="Version 5.8.2">v5.8.3</span></div>
       <p class="sub">Weather · 511 roads · plow deployments</p>
     </div>
   </div>
@@ -250,6 +250,7 @@
     <span class="msg" id="statusMsg">Loading snow events…</span>
     <button type="button" class="retry" id="retryBtn" hidden>Retry</button>
   </div>
+  <p class="muted" id="updLine" style="margin:.35rem 0 0;font:500 .7rem/1.5 var(--mono)" hidden><span id="updTxt"></span> · <button type="button" class="retry" id="refreshBtn" style="margin:0">Refresh</button></p>
   <div id="view"></div>
   <p class="foot">
     Recorder: a 5-minute check (Cloudflare Worker). An event opens when Open-Meteo shows snowfall at Three Hills, Drumheller or Stettler (CMA 517) or Castor, Consort or Czar (CMA 518),
@@ -259,7 +260,7 @@
     stopped reporting, or left the feed; times are accurate to about 5 minutes.
     Data: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0) ·
     <a href="https://511.alberta.ca/" target="_blank" rel="noopener">511 Alberta</a>. Demo only. ·
-    <a href="./">Back to the snow radar</a> · v5.8.2
+    <a href="./">Back to the snow radar</a> · v5.8.3
   </p>
 </main>
 <script>
@@ -273,7 +274,6 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const isWinter = c => !!c && !/^(bare|no report|closed)/i.test(String(c).trim());
 let timer = null;
-const EXPAND_MAX = 25;          // events shown fully expanded in the list (older ones beyond this show as a summary card linking to their page)
 
 function fmtDT(ms) {
   return new Date(ms).toLocaleString('en-CA', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: TZ, timeZoneName: 'short' });
@@ -287,7 +287,7 @@ function fmtDur(ms) {
 }
 function fmtAgo(ms) { return fmtDur(Date.now() - ms) + ' ago'; }
 const n1 = v => (v == null ? '—' : (Math.round(v * 10) / 10).toFixed(1));
-/* v5.8.2: "511 updated" line for a road condition entry; dashes where 511 gave no timestamp */
+/* v5.8.3: "511 updated" line for a road condition entry; dashes where 511 gave no timestamp */
 function spanHtml(sp) {
   if (!sp) return '';
   const to = sp.cur ? 'now / report time' : (sp.to ? fmtDT(sp.to) : '—');
@@ -366,8 +366,8 @@ function coldest(s) {
   const c = t.reduce((a, x) => (x.min_temp < a.min_temp ? x : a), t[0]);
   return n1(c.min_temp) + '<small>°C</small>';
 }
-async function showList() {
-  setStatus('loading', 'Loading snow events…');
+async function showList(quiet) {
+  if (!quiet) setStatus('loading', 'Loading snow events…');
   const [list, st] = await Promise.all([getJson('/events'), getJson('/events/status').catch(() => null)]);
   const v = $('view');
   const lc = st && st.last_check;
@@ -381,25 +381,25 @@ async function showList() {
     v.insertAdjacentHTML('beforeend', `<div class="waiting"><h2>Waiting for the first snow event of the season</h2><p>Recording starts on its own when Open-Meteo shows snow falling at Three Hills, Drumheller or Stettler (CMA 517) or Castor, Consort or Czar (CMA 518), a CMA 517 or CMA 518 road is reported non-bare, or Emcon trucks move with snow in the 12 h forecast.${evs.length ? ' Entries marked TEST below are short samples, not real events.' : ''}</p></div>`);
   }
   if (evs.length) {
-    // v5.8.2: every event is always shown expanded (full detail, charts, tables); nothing to tap.
-    const shown = evs.slice(0, EXPAND_MAX);
+    // v5.8.3: every event is always shown expanded (full detail, charts, tables); nothing to tap.
+    const shown = evs;   // v5.8.3: every event inline and expanded (no per-event page link)
     const details = await Promise.all(shown.map(e => getJson('/events/' + e.id).catch(() => null)));
     v.insertAdjacentHTML('beforeend', `<h2 class="h2">Events <span class="sub">newest first</span></h2><div class="evlist">` + evs.map((e, i) => {
       const d = details[i];
       const cls = `card${e.status === 'open' ? ' open' : ''}${e.is_test ? ' test' : ''}`;
-      if (!d) return `<a class="${cls}" href="#event-${e.id}">
+      if (!d) return `<div class="${cls}">
         <div class="c-top"><div><span class="c-title">${esc(eventTitle(e))}</span>
           <span class="c-when">${esc(fmtDT(e.started))} → ${e.ended ? esc(fmtDT(e.ended)) : 'ongoing'}</span></div>
           <span class="tags">${e.is_test ? '<span class="tag test">TEST</span>' : ''}<span class="tag ${e.status === 'open' ? 'open' : 'closed'}">${e.status === 'open' ? 'Recording' : 'Closed'}</span></span></div>
-        ${statsHtml(e)}</a>`;
+        ${statsHtml(e)}</div>`;
       const P = eventParts(d);
       return `<section class="evd" data-id="${e.id}"><div class="${cls}">${P.head}</div>
-        <div class="evd-body"><div class="actions">${csvBtn(e)}<a class="btnlink ghost" href="#event-${e.id}">Open on its own page</a></div>${P.body}</div></section>`;
+        <div class="evd-body"><div class="actions">${csvBtn(e)}</div>${P.body}</div></section>`;
     }).join('') + '</div>');
     v.querySelectorAll('a[download]').forEach(wireCsv);
   }
   setStatus('ok', (evs.length ? evs.length + ' recorded (' + (evs.length - real.length) + ' TEST). ' : '') + checkTxt);
-  schedule(evs.some(e => e.status === 'open') ? 60000 : 300000);
+  schedule(REFRESH_MS);
 }
 
 /* ---------- charts (plain SVG) ---------- */
@@ -442,7 +442,7 @@ function lineChart({ series, bars, yLabel, y2Label, t0, t1, height = 170, step =
 }
 
 /* ---------- detail ---------- */
-/* v5.8.2: builds an event's full detail (card header + weather, trucks, roads); used by the event page and,
+/* v5.8.3: builds an event's full detail (card header + weather, trucks, roads); used by the event page and,
    expanded by default, by the event list */
 function eventParts(d) {
   const e = d.event, s = d.summary || {}, snaps = d.snapshots || [], towns = d.towns || [];
@@ -471,7 +471,7 @@ function eventParts(d) {
   for (const r of d.transitions || []) (bySeg[r.seg_id] = bySeg[r.seg_id] || []).push(r);
   const segRows = Object.values(bySeg).map(list => {
     list.sort((a, b) => a.t - b.t);
-    // v5.8.2: 511 update time -> next change's 511 update time, or report time if still current (real 511 timestamps only)
+    // v5.8.3: 511 update time -> next change's 511 update time, or report time if still current (real 511 timestamps only)
     list.forEach((r, i) => {
       const next = list[i + 1], from = r.seg_updated || null, cur = !next, to = cur ? reportT : (next.seg_updated || null);
       r._sp = { from, to, cur, dur: from && to && to >= from ? to - from : null };
@@ -514,7 +514,8 @@ function eventParts(d) {
   const head = `
       <div class="c-top"><div><span class="c-title">${esc(eventTitle(e))}</span>
         <span class="c-when">${esc(fmtDT(e.started))} → ${e.ended ? esc(fmtDT(e.ended)) : 'ongoing'}</span>
-        <span class="c-when">Report generated ${esc(fmtDT(reportT))}</span>
+        <span class="c-when">Report generated ${esc(fmtDT(reportT))}</span>${e.status !== 'open' && e.ended ? `
+        <span class="c-when">Closed event, recorded data as of ${esc(fmtDT(e.ended))}</span>` : ''}
         <span class="c-when">Opened: ${esc(e.open_reason || '')}${e.close_reason ? ' · Closed: ' + esc(e.close_reason) : ''}</span></div>
         <span class="tags">${e.is_test ? '<span class="tag test">TEST</span>' : ''}<span class="tag ${e.status === 'open' ? 'open' : 'closed'}">${e.status === 'open' ? 'Recording' : 'Closed'}</span></span></div>
       ${statsHtml({ ...e, summary: s })}`;
@@ -540,31 +541,55 @@ function eventParts(d) {
   return { e, snaps, last, head, body };
 }
 const csvBtn = e => `<a class="btnlink" href="${EVENTS_API}/events/${e.id}/csv" download="snow-event-${e.id}${e.is_test ? '-TEST' : ''}.csv">Download CSV</a>`;
-async function showEvent(id) {
-  setStatus('loading', 'Loading event ' + id + '…');
+async function showEvent(id, quiet) {
+  if (!quiet) setStatus('loading', 'Loading event ' + id + '…');
   const { e, snaps, last, head, body } = eventParts(await getJson('/events/' + id));
   $('view').innerHTML = `
     <div class="actions" style="margin-top:0"><a class="btnlink ghost" href="#">‹ All events</a>${csvBtn(e)}</div>
     <div class="card${e.status === 'open' ? ' open' : ''}${e.is_test ? ' test' : ''}" style="margin-top:.7rem">${head}
     </div>${body}`;
   $('view').querySelectorAll('a[download]').forEach(wireCsv);
-  setStatus('ok', `Event ${e.id}${e.is_test ? ' (TEST)' : ''}: ${snaps.length} snapshots, last ${last ? fmtAgo(last.t) : '—'}.` + (e.status === 'open' ? ' Updates every minute while open.' : ''));
-  schedule(e.status === 'open' ? 60000 : 0);
+  setStatus('ok', `Event ${e.id}${e.is_test ? ' (TEST)' : ''}: ${snaps.length} snapshots, last ${last ? fmtAgo(last.t) : '—'}.` + '');
+  schedule(REFRESH_MS);
 }
 
-function schedule(ms) { clearTimeout(timer); if (ms) timer = setTimeout(route, ms); }
+/* v5.8.3: always current at view time. Re-fetch on load, when the page becomes visible again (incl. iPhone Safari
+   restoring the tab from bfcache) and every 60 s while visible; nothing runs while hidden. Re-renders keep the scroll position. */
+const REFRESH_MS = 60000;
+let busy = false, again = false, firstLoad = true;
+function schedule(ms) { clearTimeout(timer); timer = null; if (ms && !document.hidden) timer = setTimeout(route, ms); }
 async function route() {
+  if (busy) { again = true; return; }
+  busy = true; clearTimeout(timer);
   const m = /^#event-(\d+)$/.exec(location.hash);
+  const y = window.scrollY, quiet = !firstLoad;
+  const view = $('view'); if (quiet) view.style.minHeight = view.offsetHeight + 'px';   // no jump while the new content is laid out
+  const dState = quiet ? [...view.querySelectorAll('details')].map(d => d.open) : null;   // keep each section open/closed as the viewer left it
   try {
-    if (m) await showEvent(Number(m[1])); else await showList();
+    if (m) await showEvent(Number(m[1]), quiet); else await showList(quiet);
+    firstLoad = false;
+    $('updTxt').textContent = 'Updated ' + new Date().toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit', second: '2-digit', hourCycle: 'h23', timeZone: TZ }) + ' ' + tzAbbr();
+    $('updLine').hidden = false;
   } catch (e) {
     setStatus('error', 'Could not load snow events: ' + (e.message || e) + '.', true);
-    schedule(120000);
+    schedule(REFRESH_MS);
+  } finally {
+    if (quiet) {
+      const ds = [...view.querySelectorAll('details')];
+      if (dState && ds.length === dState.length) ds.forEach((d, i) => { d.open = dState[i]; });
+      window.scrollTo(0, y); view.style.minHeight = '';
+    }
+    busy = false;
+    if (again) { again = false; route(); }
   }
 }
+function tzAbbr() { const p = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, timeZoneName: 'short' }).formatToParts(new Date()).find(x => x.type === 'timeZoneName'); return p ? p.value : ''; }
 $('retryBtn').onclick = route;
-window.addEventListener('hashchange', () => { window.scrollTo(0, 0); route(); });
-document.addEventListener('visibilitychange', () => { if (!document.hidden) route(); });
+$('refreshBtn').onclick = route;
+window.addEventListener('hashchange', () => { window.scrollTo(0, 0); firstLoad = true; route(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { clearTimeout(timer); timer = null; } else route(); });
+window.addEventListener('pageshow', e => { if (e.persisted) route(); });
+window.addEventListener('online', route);
 route();
 </script>
 </body>
