@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#05080f" />
 <link rel="icon" href="data:," /><!-- no favicon: stops Chrome requesting /favicon.ico (404 console error) -->
-<title>Central Alberta 7-Day Forecast · v5.8.1</title>
+<title>Central Alberta 7-Day Forecast · v5.8.2</title>
 <script>document.documentElement.className += ' js';</script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -260,7 +260,7 @@
   <div class="brand">
     <div class="scope" aria-hidden="true"></div>
     <div>
-      <div class="title-row"><h1><span class="h1-long">Central Alberta </span>7-Day Forecast</h1><span class="ver" title="Version 5.8.1">v5.8.1</span></div>
+      <div class="title-row"><h1><span class="h1-long">Central Alberta </span>7-Day Forecast</h1><span class="ver" title="Version 5.8.2">v5.8.2</span></div>
       <p class="sub">Open-Meteo model forecast · by town</p>
     </div>
   </div>
@@ -294,7 +294,7 @@
     daily values in Mountain Time. Highs/lows °C · precipitation mm · snowfall cm · chance = max hourly probability of precipitation ·
     wind = max sustained and gusts at 10 m, km/h, with dominant direction. Model estimates, not an official forecast: check
     <a href="https://weather.gc.ca/" target="_blank" rel="noopener">Environment Canada</a> for warnings. ·
-    <a href="./" id="footRadar">Back to the snow radar</a> · v5.8.1
+    <a href="./" id="footRadar">Back to the snow radar</a> · v5.8.2
   </p>
 </main>
 
@@ -593,7 +593,7 @@ function applyView() {
   $('backLink').href = './' + radarHash;
   $('footRadar').href = './' + radarHash;
   const tn = TOWNS.find(t => t.id === view);
-  document.title = (tn ? tn.name + ' 7-Day Forecast' : 'Central Alberta 7-Day Forecast') + ' · v5.8.1';
+  document.title = (tn ? tn.name + ' 7-Day Forecast' : 'Central Alberta 7-Day Forecast') + ' · v5.8.2';
 }
 function viewFromHash() {
   const h = (location.hash || '').replace('#', '').toLowerCase();

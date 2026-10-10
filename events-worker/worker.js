@@ -391,6 +391,32 @@ function csvCell(v) {
   return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 const iso = t => (t ? new Date(t).toISOString() : '');
+// Alberta local time with zone label (MDT/MST), e.g. "2026-10-08 20:20 MDT"; blank when missing
+const MT_FMT = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Edmonton', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short' });
+const mt = t => {
+  if (!t) return '';
+  const p = Object.fromEntries(MT_FMT.formatToParts(new Date(t)).map(x => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute} ${p.timeZoneName}`;
+};
+const fmtDurMs = ms => { if (ms == null || !isFinite(ms) || ms < 0) return ''; const m = Math.round(ms / 60000); const d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60), mm = m % 60; return (d ? d + 'd ' : '') + (d || h ? h + 'h ' : '') + mm + 'm'; };
+/** Per road-condition entry: 511 update time -> next change's 511 update time for that segment, or report time if still current.
+ *  Uses only real 511 timestamps (seg_updated); a missing one leaves from/to/duration blank. */
+function roadSpans(trs, reportT) {
+  const bySeg = {};
+  for (const r of trs) (bySeg[r.seg_id] = bySeg[r.seg_id] || []).push(r);
+  const out = new Map();
+  for (const list of Object.values(bySeg)) {
+    list.sort((a, b) => a.t - b.t);
+    list.forEach((r, i) => {
+      const next = list[i + 1];
+      const from = r.seg_updated || null;
+      const current = !next;
+      const to = current ? reportT : (next.seg_updated || null);
+      out.set(r, { from, to, current, dur: from && to && to >= from ? to - from : null });
+    });
+  }
+  return out;
+}
 async function eventCsv(env, id, cors) {
   const ev = await env.DB.prepare('SELECT * FROM events WHERE id = ?').bind(id).first();
   if (!ev) return json({ error: 'no such event' }, 404, cors);
@@ -398,7 +424,9 @@ async function eventCsv(env, id, cors) {
   const trs = (await env.DB.prepare('SELECT * FROM transitions WHERE event_id = ? ORDER BY seg_id, t').bind(id).all()).results;
   const trucks = parse(ev.trucks, {});
   const L = [];
+  const reportT = Date.now();
   const row = a => L.push(a.map(csvCell).join(','));
+  row(['# Report generated', mt(reportT)]);
   row(['# Central Alberta snow event ' + id + (ev.is_test ? ' (TEST)' : ''), 'started_utc=' + iso(ev.started), 'ended_utc=' + iso(ev.ended), 'opened: ' + (ev.open_reason || ''), 'closed: ' + (ev.close_reason || '')]);
   row(['# Weather = Open-Meteo model (not observations); roads + plows = 511 Alberta. Times UTC ISO-8601.']);
   row(['# Trucks: Emcon only (Mainroad and other contractors are not recorded)']);
@@ -413,13 +441,19 @@ async function eventCsv(env, id, cors) {
     }
   }
   L.push('');
+  const spans = roadSpans(trs, reportT);
   const roadRows = (label, list) => {
-    row(['section', 'observed_utc', 'segment_id', 'area', 'road', 'location', 'cma517', 'cma518', 'from_condition', 'to_condition', 'segment_511_updated_utc']);
-    for (const r of list) row([label, iso(r.t), r.seg_id, r.area, r.road, r.location, r.cma517, r.cma518 || 0, r.from_cond == null ? '(initial)' : r.from_cond, r.to_cond, iso(r.seg_updated)]);
+    row(['section', 'observed_utc', 'segment_id', 'area', 'road', 'location', 'cma517', 'cma518', 'from_condition', 'to_condition', 'segment_511_updated_utc',
+      'segment_511_updated_mdt', 'condition_from_mdt', 'condition_to_mdt', 'condition_duration']);
+    for (const r of list) {
+      const sp = spans.get(r) || {};
+      row([label, iso(r.t), r.seg_id, r.area, r.road, r.location, r.cma517, r.cma518 || 0, r.from_cond == null ? '(initial)' : r.from_cond, r.to_cond, iso(r.seg_updated),
+        mt(r.seg_updated), mt(sp.from), sp.current ? (sp.from ? 'now / report time (' + mt(sp.to) + ')' : '') : mt(sp.to), fmtDurMs(sp.dur)]);
+    }
   };
   roadRows('road', trs.filter(r => !r.cma518));
   L.push('');
-  row(['# CMA 518 (Castor, Consort, Czar) - recorded separately; not used to open or close events']);
+  row(['# CMA 518 roads (Castor, Consort, Czar)']);
   roadRows('road_cma518', trs.filter(r => r.cma518));
   L.push('');
   row(['section', 'truck_id', 'owner', 'group', 'out_utc', 'back_utc', 'hours', 'start', 'end']);
