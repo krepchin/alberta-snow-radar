@@ -81,8 +81,11 @@ Only if the whole feature is ever retired:
 
 ## v5.8 changes (Oct 8, 2026)
 
-- **Trucks: Emcon only.** `getPlows()` drops every vehicle whose owner does not match `/emcon|mcon/i`, so Mainroad and other
-  contractors are never stored. Rows already stored for TEST event 1 were purged (trucks, snapshot plow lists, counts).
+- **Trucks: Emcon only, CMA 517/518 only.** `getPlows()` drops every vehicle whose owner does not match `/emcon|mcon/i`, so other
+  contractors are never stored. Each check then keeps an Emcon truck only if it is within 2 km (`COVERAGE_KM`) of a CMA 517 / CMA 518
+  road segment polyline from the relay's /roads; if road geometry is unavailable that check records no trucks.
+- **Roads: CMA 517 and CMA 518 only.** `getRoads()` keeps segments whose area starts with `CMA 517 - ` or `CMA 518 - `; other areas in
+  the relay box are never stored. (Oct 11, 2026: 110 other-area transitions purged from event 2; backup in /workspace/plows-work/wr.)
 - **CMA 518** (Castor, Consort, Czar) is set up like CMA 517: weather points `ca`, `co`, `cz`; transitions carry a `cma518` flag
   (`ALTER TABLE transitions ADD COLUMN cma518 INTEGER NOT NULL DEFAULT 0`, already applied); snapshots carry `nbc518`;
   a non-bare CMA 518 segment or snowfall at a CMA 518 town opens or continues an event, and closing needs both CMAs bare.

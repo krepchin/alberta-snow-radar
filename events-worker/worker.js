@@ -7,7 +7,8 @@
  *     (falls back to the public workers.dev URL)
  * Nothing is recorded until an event opens (see ARMING). Recording is always on (no switch, no test controls; removed Oct 8 2026).
  * Nothing here is invented: missing inputs are stored as null and never treated as "bare" or "no snow".
- * Trucks: Emcon only (owner matches /emcon|mcon/i). Mainroad and other contractors' trucks are dropped on input and never stored.
+ * Trucks: Emcon only (owner matches /emcon|mcon/i), and only within 2 km of a CMA 517 / CMA 518 road segment. Other contractors' trucks are dropped on input and never stored.
+ * Roads: CMA 517 and CMA 518 segments only; other areas the relay returns are dropped on input and never stored.
  */
 const TOWNS = [
   { id: 'th', name: 'Three Hills', lat: 51.70722, lon: -113.26472, cma: '517' },
@@ -38,7 +39,7 @@ const TEST_MAX_MS = 3 * 60 * MIN;  // legacy: a (pre-existing) TEST event left o
 const ALLOWED_ORIGINS = [/^https:\/\/krepchin\.github\.io$/, /^http:\/\/localhost(:\d+)?$/, /^http:\/\/127\.0\.0\.1(:\d+)?$/];
 
 const isWinter = c => !!c && !/^(bare|no report|closed)/i.test(String(c).trim());   // see README: Closed is excluded
-const group = o => /emcon|mcon/i.test(o || '') ? 'emcon' : /mainroad/i.test(o || '') ? 'mainroad' : 'other';
+const group = o => /emcon|mcon/i.test(o || '') ? 'emcon' : 'other';   // only 'emcon' is ever kept
 
 export default {
   async scheduled(controller, env, ctx) {
@@ -122,13 +123,31 @@ const num = v => (typeof v === 'number' && isFinite(v) ? v : null);
 async function getRoads(env) {
   const gj = await relayJson(env, '/roads', 12000);
   if (!gj || !Array.isArray(gj.features) || !gj.generated) throw new Error(gj && gj.error ? gj.error : 'no road data');
-  const segs = {};
+  const segs = {}, lines = [];
   for (const f of gj.features) {
     const p = f.properties || {};
     if (p.id == null) continue;
+    if (!/^CMA 51[78] - /.test(p.area || '')) continue;   // v5.8.4: Central Alberta only (CMA 517 + CMA 518); other areas in the relay box are never stored
     segs[String(p.id)] = { c: p.condition || null, r: p.road || '', l: p.location || '', a: p.area || '', u: p.updated ? Date.parse(p.updated) : null };
+    const g = f.geometry || {};
+    if (g.type === 'LineString') lines.push(g.coordinates); else if (g.type === 'MultiLineString') lines.push(...g.coordinates);
   }
+  Object.defineProperty(segs, 'lines', { value: lines, enumerable: false });   // CMA 517/518 polylines, used to scope trucks
   return segs;
+}
+/* v5.8.4: an Emcon truck counts only while it is within COVERAGE_KM of a CMA 517 / CMA 518 road segment
+   (Emcon also runs neighbouring CMAs whose trucks can sit inside the relay box). */
+const COVERAGE_KM = 2;
+function nearCoverage(lat, lon, lines) {
+  if (typeof lat !== 'number' || typeof lon !== 'number') return false;
+  const kx = 111.32 * Math.cos(lat * Math.PI / 180), ky = 110.57;
+  for (const ln of lines) for (let i = 1; i < ln.length; i++) {
+    const ax = (ln[i - 1][0] - lon) * kx, ay = (ln[i - 1][1] - lat) * ky, bx = (ln[i][0] - lon) * kx, by = (ln[i][1] - lat) * ky;
+    const dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy;
+    const t = L ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L)) : 0;
+    if (Math.hypot(ax + t * dx, ay + t * dy) <= COVERAGE_KM) return true;
+  }
+  return false;
 }
 async function getPlows(env) {
   const j = await relayJson(env, '/plows', 10000);
@@ -143,11 +162,17 @@ async function getPlows(env) {
 async function runCheck(env, opts = {}) {
   const now = Date.now();
   const errors = {};
-  const [wx, segs, plows] = await Promise.all([
+  const [wx, segs, plowsRaw] = await Promise.all([
     getWeather().catch(e => { errors.weather = safeMsg(e); return null; }),
     getRoads(env).catch(e => { errors.roads = safeMsg(e); return null; }),
     getPlows(env).catch(e => { errors.plows = safeMsg(e); return null; })
   ]);
+  // trucks are kept only near CMA 517/518 roads; without road geometry the coverage is unknown, so no trucks are recorded this check
+  let plows = plowsRaw;
+  if (plows) {
+    if (segs && segs.lines && segs.lines.length) plows = plows.filter(v => nearCoverage(v.lat, v.lon, segs.lines));
+    else { errors.plows = 'CMA 517/518 road geometry unavailable, trucks not recorded this check'; plows = null; }
+  }
   const db = env.DB;
   const st = {};
   (await db.prepare('SELECT k, v, t FROM state').all()).results.forEach(r => { try { st[r.k] = { v: JSON.parse(r.v), t: r.t }; } catch (e) { /* ignore */ } });
@@ -256,7 +281,7 @@ function snapshotStatements(db, ev, now, ctx) {
     w[t.id] = { rate: d.s15 == null ? null : round(d.s15 * 4, 2), s15: d.s15, acc: round(accum, 2), temp: d.temp, wind: d.wind, gust: d.gust, vis: d.vis, code: d.code, mt: d.t };
   }
 
-  // road transitions (box), CMA 517 flagged
+  // road transitions (CMA 517 + CMA 518 only)
   let nonBare = null, nonBareCma = null, nonBare518 = null;
   if (segs) {
     nonBare = 0; nonBareCma = 0; nonBare518 = 0;
@@ -430,15 +455,16 @@ async function eventCsv(env, id, cors) {
   row([ev.status === 'open' ? '# Open event, snapshots up to ' + mt(reportT) + ' (latest stored 5-minute check)' : '# Closed event, recorded data as of ' + mt(ev.ended || reportT) + ' (frozen)']);
   row(['# Central Alberta snow event ' + id + (ev.is_test ? ' (TEST)' : ''), 'started_utc=' + iso(ev.started), 'ended_utc=' + iso(ev.ended), 'opened: ' + (ev.open_reason || ''), 'closed: ' + (ev.close_reason || '')]);
   row(['# Weather = Open-Meteo model (not observations); roads + plows = 511 Alberta. Times UTC ISO-8601.']);
-  row(['# Trucks: Emcon only (Mainroad and other contractors are not recorded)']);
+  row(['# Trucks: Emcon only (other contractors not recorded), within 2 km of a CMA 517 / CMA 518 road']);
+  row(['# Coverage: CMA 517 and CMA 518']);
   L.push('');
-  row(['section', 'time_utc', 'town', 'cma', 'snowfall_rate_cm_per_h', 'snowfall_15min_cm', 'accum_since_start_cm', 'temp_c', 'wind_kmh', 'gust_kmh', 'visibility_m', 'weather_code', 'emcon_trucks_out', 'emcon_trucks_reporting_in_box', 'cma517_non_bare_segments', 'cma518_non_bare_segments', 'box_non_bare_segments']);
+  row(['section', 'time_utc', 'town', 'cma', 'snowfall_rate_cm_per_h', 'snowfall_15min_cm', 'accum_since_start_cm', 'temp_c', 'wind_kmh', 'gust_kmh', 'visibility_m', 'weather_code', 'emcon_trucks_out', 'emcon_trucks_reporting', 'cma517_non_bare_segments', 'cma518_non_bare_segments']);
   for (const cma of ['517', '518']) {
     if (cma === '518') { L.push(''); row(['# CMA 518 weather (Castor, Consort, Czar)']); }
     for (const s of snaps) for (const t of TOWNS.filter(x => x.cma === cma)) {
       if (!(t.id in (s.w || {}))) continue;   // snapshot taken before this town was added
       const w = (s.w || {})[t.id] || {};
-      row([t.cma === '518' ? 'weather_cma518' : 'weather', iso(s.t), t.name, 'CMA ' + t.cma, w.rate, w.s15, w.acc, w.temp, w.wind, w.gust, w.vis, w.code, s.out && s.out.emcon, s.pl, s.nbc, s.nbc518, s.nb]);
+      row([t.cma === '518' ? 'weather_cma518' : 'weather', iso(s.t), t.name, 'CMA ' + t.cma, w.rate, w.s15, w.acc, w.temp, w.wind, w.gust, w.vis, w.code, s.out && s.out.emcon, s.pl, s.nbc, s.nbc518]);
     }
   }
   L.push('');
