@@ -285,7 +285,7 @@
   </div>
   <div id="view"></div>
   <p class="foot">
-    A row is written when a 511 segment's condition changes (“change”), or when 511 updates the segment without changing it (“update, no change”, counted and collapsed).
+    A row is written when a 511 segment's condition changes (“change”), or when 511 updates the segment without changing it (“updated, no change”).
     The first row for each segment is its baseline (“initial”) when logging started, not a change. Times are America/Edmonton.
     Data: <a href="https://511.alberta.ca/" target="_blank" rel="noopener">511 Alberta</a>. Demo only. · <a href="events.html">Snow events</a> · <a href="./">Back to the snow radar</a> · v5.9
   </p>
@@ -322,12 +322,14 @@ const cmaOf = a => /^CMA 518 - /.test(a || '') ? '518' : /^CMA 517 - /.test(a ||
 let day = null, today = null, days = [];
 
 function rowHtml(r) {
-  return `<div class="rrow"><span class="tm">${esc(fmtT(r.t))}</span><span class="rd">${esc(r.road || '')}${r.kind === 'initial' ? '<span class="kind">initial</span>' : r.kind === 'update' ? '<span class="kind">update</span>' : ''}<span class="lc">${esc(r.location || '')} · ${esc((r.area || '').replace(/^CMA 51[78] - /, ''))}</span></span>
-    <span class="ft">${r.kind === 'change' ? condHtml(r.from_cond) + ' → ' + condHtml(r.to_cond) : r.kind === 'update' ? condHtml(r.to_cond) + ' (no change)' : condHtml(r.to_cond)}${r.secondary ? ' · ' + esc(r.secondary) : ''}${r.visibility && !/^good$/i.test(r.visibility) ? ' · visibility ' + esc(r.visibility) : ''} · 511 updated ${r.seg_updated ? esc(fmtDT(r.seg_updated)) : '—'}</span></div>`;
+  return `<div class="rrow"><span class="tm">${esc(fmtT(r.t))}</span><span class="rd">${esc(r.road || '')}${r.kind === 'initial' ? '<span class="kind">initial</span>' : r.kind === 'update' ? '<span class="kind">update</span>' : '<span class="kind">change</span>'}<span class="lc">${esc(r.location || '')} · ${esc((r.area || '').replace(/^CMA 51[78] - /, ''))}</span></span>
+    <span class="ft">${r.kind === 'change' ? condHtml(r.from_cond) + ' → ' + condHtml(r.to_cond) : r.kind === 'update' ? condHtml(r.to_cond) + ' · updated, no change' : condHtml(r.to_cond)}${r.secondary ? ' · ' + esc(r.secondary) : ''}${r.visibility && !/^good$/i.test(r.visibility) ? ' · visibility ' + esc(r.visibility) : ''} · 511 updated ${r.seg_updated ? esc(fmtDT(r.seg_updated)) : '—'}</span></div>`;
 }
 function section(cma, d) {
   const rows = d.rows.filter(r => cmaOf(r.area) === cma);
   const ch = rows.filter(r => r.kind === 'change'), up = rows.filter(r => r.kind === 'update'), ini = rows.filter(r => r.kind === 'initial');
+  // every 511 update (changes and same-condition updates), one chronological feed, newest first
+  const feed = rows.filter(r => r.kind !== 'initial').sort((a, b) => b.t - a.t || String(a.road).localeCompare(String(b.road)));
   const perArea = {}; ch.forEach(r => { const a = r.area.replace(/^CMA 51[78] - /, ''); perArea[a] = (perArea[a] || 0) + 1; });
   const latest = d.latest.filter(s => cmaOf(s.area) === cma);
   const nonBare = latest.filter(s => isWinter(s.cond));
@@ -338,8 +340,7 @@ function section(cma, d) {
     ` · first change to snow covered: ${firstSnow ? esc(firstSnow.road + ' ' + firstSnow.location) + ' at ' + esc(fmtT(firstSnow.t)) : 'none'}</p>`;
   const names = cma === '517' ? 'Three Hills, Drumheller, Stettler' : 'Castor, Consort, Czar';
   return `<h2 class="h2">CMA ${cma} <span class="sub">${names}</span></h2>${sum}
-    <div class="rows" style="margin-top:6px">${ch.length ? ch.map(rowHtml).join('') : '<p class="muted" style="margin:0;font:500 .74rem/1.5 var(--mono)">No condition changes logged on this day.</p>'}</div>
-    ${up.length ? `<details class="more" data-k="up${cma}"><summary>${up.length} update${up.length === 1 ? '' : 's'}, no change (show)</summary><div class="rows">${up.map(rowHtml).join('')}</div></details>` : ''}
+    <div class="rows" style="margin-top:6px">${feed.length ? feed.map(rowHtml).join('') : '<p class="muted" style="margin:0;font:500 .74rem/1.5 var(--mono)">No 511 updates logged for CMA ' + cma + ' on this day yet.</p>'}</div>
     ${ini.length ? `<details class="more" data-k="ini${cma}"><summary>${ini.length} segments · baseline when logging started (show)</summary><div class="rows">${ini.map(rowHtml).join('')}</div></details>` : ''}`;
 }
 async function load(quiet) {
@@ -354,8 +355,8 @@ async function load(quiet) {
   $('csvBtn').href = API + '/roadlog/' + day + '/csv'; $('csvBtn').setAttribute('download', 'road-log-' + day + '.csv');
   $('view').innerHTML = d.rows.length ? section('517', d) + section('518', d)
     : `<div class="waiting" style="margin-top:.7rem"><h2>Nothing logged on ${esc(day)}</h2><p>${day < first ? 'Logging started on ' + esc(first) + '.' : 'No 511 updates for CMA 517 or CMA 518 have been recorded for this day yet.'}</p></div>`;
-  const tot = d.rows.filter(r => r.kind === 'change').length;
-  setStatus('ok', `${day === today ? 'Today' : day}: ${tot} condition change${tot === 1 ? '' : 's'} across CMA 517 and CMA 518. Logging since ${first}.`);
+  const tot = d.rows.filter(r => r.kind === 'change').length, upd = d.rows.filter(r => r.kind === 'update').length;
+  setStatus('ok', `${day === today ? 'Today' : day}: ${tot + upd ? (tot + upd) + ' road update' + (tot + upd === 1 ? '' : 's') + ' (' + tot + ' condition change' + (tot === 1 ? '' : 's') + ')' : 'no road updates from 511 yet'} across CMA 517 and CMA 518. Logging since ${first}.`);
 }
 const REFRESH_MS = 60000;
 let timer = null, busy = false, again = false, firstLoad = true;
