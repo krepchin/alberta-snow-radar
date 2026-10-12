@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en-CA">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#05080f" />
+<link rel="icon" href="data:," /><!-- no favicon: stops Chrome requesting /favicon.ico (404 console error) -->
+<title>Cameras · Alberta Snow Radar</title>
+<script>document.documentElement.className += ' js';</script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<!-- Non-blocking web font: the page renders with system fonts if Google Fonts is slow or blocked -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'" />
+<style>
+  :root {
+    --bg: #05080f;
+    --bg2: #0a111d;
+    --glass: rgba(10, 18, 32, 0.66);
+    --glass-strong: rgba(8, 14, 26, 0.86);
+    --line: rgba(20, 224, 192, 0.16);
+    --line-strong: rgba(20, 224, 192, 0.38);
+    --text: #e6f1ff;
+    --muted: #7f93ad;
+    --dim: #4d5f78;
+    --cyan: #19d3c5;
+    --teal: #14e0c0;
+    --glow: 0 0 0 1px rgba(20, 224, 192, 0.55), 0 0 18px rgba(25, 211, 197, 0.35);
+    --amber: #fbbf24;
+    --red: #f87171;
+    --snowc: #c7d2fe;
+    --cold: #7dd3fc;
+    --radius: 14px;
+    --font: 'Space Grotesk', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --mono: ui-monospace, 'SF Mono', 'Cascadia Mono', 'Roboto Mono', Menlo, Consolas, monospace;
+    --ease: cubic-bezier(.2, .8, .2, 1);
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; min-height: 100vh; min-height: 100dvh;
+    font-family: var(--font); color: var(--text);
+    background:
+      radial-gradient(1200px 600px at 80% -10%, rgba(20,224,192,0.07), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(25,211,197,0.05), transparent 60%),
+      var(--bg);
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--cyan); }
+
+  .nojs {
+    margin: 12px; padding: 0.9rem 1rem; border-radius: 12px;
+    background: #2a1a08; border: 1px solid var(--amber); color: #fde68a; font-size: 0.9rem; line-height: 1.45;
+  }
+  .nojs strong { color: #fff; }
+  .js .nojs { display: none; }
+
+  /* ---------- Header ---------- */
+  .topbar { position: sticky; top: 0; z-index: 20; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45); }
+  .hdr {
+    position: relative;
+    display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+    padding: 0.55rem 1rem; padding-top: calc(0.55rem + env(safe-area-inset-top));
+    padding-left: calc(1rem + env(safe-area-inset-left)); padding-right: calc(1rem + env(safe-area-inset-right));
+    background: linear-gradient(180deg, rgba(10, 17, 29, 0.98), rgba(6, 10, 18, 0.96));
+    border-bottom: 1px solid var(--line);
+  }
+  .brand { display: flex; align-items: center; gap: 0.7rem; min-width: 0; }
+  .brand > div { min-width: 0; }
+  .scope {
+    position: relative; flex: 0 0 auto; width: 38px; height: 38px; border-radius: 50%;
+    border: 1px solid var(--line-strong);
+    background:
+      radial-gradient(circle, transparent 38%, rgba(20,224,192,0.18) 39%, transparent 41%),
+      radial-gradient(circle, transparent 68%, rgba(20,224,192,0.18) 69%, transparent 71%),
+      radial-gradient(circle at center, #0b1a24, #05080f 70%);
+    box-shadow: 0 0 14px rgba(25, 211, 197, 0.25), inset 0 0 10px rgba(25, 211, 197, 0.15);
+    overflow: hidden;
+  }
+  .scope::before {
+    content: ''; position: absolute; inset: 0; border-radius: 50%;
+    background: conic-gradient(from 0deg, rgba(20,224,192,0.55), rgba(20,224,192,0) 70deg, transparent 360deg);
+    animation: sweep 3.6s linear infinite;
+  }
+  .scope::after {
+    content: ''; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px;
+    border-radius: 50%; background: var(--teal); box-shadow: 0 0 6px var(--teal);
+  }
+  @keyframes sweep { to { transform: rotate(360deg); } }
+  .title-row { display: flex; align-items: center; gap: 0.45rem; min-width: 0; }
+  .brand h1 { margin: 0; min-width: 0; font-size: 1.05rem; font-weight: 600; letter-spacing: 0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ver { flex: 0 0 auto; font: 600 0.6rem/1 var(--mono); letter-spacing: 0.06em; color: var(--teal); padding: 0.18rem 0.32rem;
+    border: 1px solid rgba(20, 224, 192, 0.45); border-radius: 5px; background: rgba(20, 224, 192, 0.08); box-shadow: 0 0 8px rgba(20, 224, 192, 0.18); }
+  .brand .sub { margin: 0.05rem 0 0; font-size: 0.72rem; color: var(--muted); letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .back {
+    flex: 0 0 auto; display: inline-flex; align-items: center; gap: 0.4rem; min-height: 44px; padding: 0 0.85rem;
+    border-radius: 12px; border: 1px solid rgba(20, 224, 192, 0.5); background: rgba(20, 224, 192, 0.08);
+    color: #e9fffb; text-decoration: none; font-weight: 600; font-size: 0.9rem; box-shadow: 0 0 14px rgba(20,224,192,0.15);
+    touch-action: manipulation; transition: background .2s var(--ease), box-shadow .2s var(--ease);
+  }
+  .back:hover { background: rgba(20, 224, 192, 0.16); box-shadow: var(--glow); }
+  .back:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--cyan); }
+  .back svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+
+  main { max-width: 480px; margin: 0 auto; padding: 1.1rem 1rem calc(1.5rem + env(safe-area-inset-bottom)); }
+  .h2 { display:flex; align-items:center; gap:.5rem; margin:.4rem 0 .35rem; font-size:1.5rem; font-weight:600; }
+  .h2::before { content:''; width:14px; height:2px; background:var(--teal); box-shadow:0 0 6px var(--teal); border-radius:2px; }
+  .lead { margin:0 0 1rem; color:var(--muted); font-size:.92rem; line-height:1.45; }
+  .k { display:block; font:600 .62rem/1.3 var(--mono); letter-spacing:.1em; text-transform:uppercase; color:var(--muted); margin:0 0 .45rem; }
+  .choices { display:grid; gap:10px; margin-bottom:1.1rem; }
+  .choice { display:flex; align-items:center; gap:.8rem; width:100%; min-height:68px; padding:.8rem .95rem; border-radius:var(--radius);
+    background:var(--glass); border:1px solid var(--line); color:var(--text); font:600 1.02rem/1.2 var(--font); text-align:left; cursor:pointer;
+    box-shadow:0 10px 30px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.03); touch-action:manipulation; }
+  .choice .ic { flex:0 0 auto; width:38px; height:38px; border-radius:10px; display:grid; place-items:center; font:700 .72rem/1 var(--mono);
+    border:1px solid var(--line-strong); background:rgba(20,224,192,.08); color:var(--teal); }
+  .choice.emcon .ic { color:#ffb366; border-color:rgba(255,138,31,.5); background:rgba(255,138,31,.08); }
+  .choice small { display:block; margin-top:.2rem; font:500 .66rem/1.3 var(--mono); color:var(--muted); }
+  .choice .rad { margin-left:auto; width:22px; height:22px; border-radius:50%; border:2px solid var(--dim); flex:0 0 auto; }
+  .choice[aria-pressed="true"] { border-color:rgba(20,224,192,.6); box-shadow:0 0 0 1px rgba(20,224,192,.25), 0 0 22px rgba(20,224,192,.15); }
+  .choice[aria-pressed="true"] .rad { border-color:var(--teal); background:radial-gradient(circle, var(--teal) 42%, transparent 46%); box-shadow:0 0 8px rgba(20,224,192,.5); }
+  .panel { padding:.9rem; border-radius:var(--radius); background:var(--glass); border:1px solid var(--line); }
+  .field { margin-bottom:.8rem; }
+  .field input { width:100%; min-height:48px; padding:0 .85rem; border-radius:12px; border:1px solid var(--line-strong); background:rgba(3,10,18,.7);
+    color:var(--text); font:500 1rem var(--font); }
+  .field input::placeholder { color:var(--dim); }
+  .go { width:100%; min-height:50px; border-radius:12px; border:1px solid rgba(20,224,192,.7); background:linear-gradient(180deg,#19d3c5,#12b8a6);
+    color:#041b17; font:700 .82rem/1 var(--mono); letter-spacing:.1em; text-transform:uppercase; box-shadow:0 0 18px rgba(25,211,197,.3); }
+  .req { margin:1rem 0 0; text-align:center; font-size:.92rem; }
+  .req a { font-weight:600; text-decoration:none; }
+  .req p { margin:.35rem 0 0; font:500 .68rem/1.45 var(--mono); color:var(--muted); }
+  .foot { margin:1.4rem 0 0; font-size:.7rem; color:var(--dim); text-align:center; }
+  @media (max-width: 440px) { .hdr{padding-left:.75rem;padding-right:.75rem;gap:.5rem} .brand{gap:.5rem} .scope{width:30px;height:30px} .brand h1{font-size:.95rem} .brand .sub{display:none} .back{padding:0 .7rem;font-size:.85rem} }
+  .st{margin:0 0 .75rem;font-size:1.1rem;font-weight:600;color:var(--teal)} .emc .st{color:#ffb366}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .cam{border-radius:var(--radius);overflow:hidden;background:var(--glass);border:1px solid var(--line)}
+  .cam img{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;background:#000}
+  .cam .i{padding:.5rem .55rem .6rem} .cam b{display:block;font-size:.8rem;line-height:1.25}
+  .cam span{display:block;font:500 .6rem/1.4 var(--mono);color:var(--muted);margin-top:.15rem}
+  .cam .rd{color:var(--teal)} .emc-page .cam .rd{color:#ffb366}
+  .cam .ft{display:inline-block;margin-top:0;margin-bottom:.3rem;font:700 .54rem/1 var(--mono);letter-spacing:.1em;padding:.25rem .38rem;border-radius:5px;color:#041b17;background:var(--teal)}
+  .emc-page .cam .ft{background:#ff8a1f;color:#1f0e02}
+  .sec{display:flex;align-items:center;justify-content:space-between;margin:1.1rem 0 .55rem;font-weight:600}
+  .tog{display:grid;grid-template-columns:1fr 1fr 1fr;border:1px solid var(--line-strong);border-radius:12px;overflow:hidden}
+  .tog button{min-height:40px;padding:0 .8rem;border:0;background:transparent;color:var(--muted);font:600 .7rem/1 var(--mono);letter-spacing:.06em}
+  .tog button.on{background:var(--teal);color:#041b17}
+  .emc-page .tog{border-color:rgba(255,138,31,.5)} .emc-page .tog button.on{background:#ff8a1f;color:#1f0e02}
+  .btnrow{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:1rem}
+  .bb{min-height:54px;border-radius:12px;border:1px solid rgba(20,224,192,.5);background:rgba(20,224,192,.1);color:#e9fffb;font:600 .78rem/1 var(--mono);letter-spacing:.08em;text-transform:uppercase}
+  .emc-page .bb{border-color:rgba(255,138,31,.55);background:rgba(255,138,31,.1)}
+  .bb.full{grid-column:1/-1} .bb.out{border-color:var(--line);background:rgba(3,7,14,.6);color:var(--muted)}
+  .bb.go2{background:linear-gradient(180deg,#19d3c5,#12b8a6);color:#041b17}
+  .emc-page .bb.go2{background:linear-gradient(180deg,#ff9a3c,#ff8a1f);color:#1f0e02}
+  .emc-page .h2::before{background:#ff8a1f;box-shadow:0 0 6px #ff8a1f} .emc-page .cam{border-color:rgba(255,138,31,.25)}
+  [hidden]{display:none!important}
+
+  .cam .wx{display:grid;grid-template-columns:auto 1fr;gap:.1rem .4rem;margin-top:.35rem;font:500 .6rem/1.4 var(--mono);color:var(--muted)}
+  .cam .wx i{font-style:normal;color:var(--dim)} .cam .wx em{font-style:normal;color:var(--text)}
+  .cam .sus{color:var(--amber)!important}
+  .sec h3{margin:0;font-size:1rem;font-weight:600}
+</style>
+<script src="auth.js"></script>
+</head>
+<body>
+<div class="topbar"><header class="hdr">
+  <div class="brand"><div class="scope" aria-hidden="true"></div>
+    <div><div class="title-row"><h1>Alberta Snow Radar</h1><span class="ver">v5.9</span></div><p class="sub">Weather · 511 roads · plow deployments</p></div></div>
+  <div style="display:flex;gap:.4rem;flex:0 0 auto"><a class="back" href="outlook.html">Outlook</a><a class="back" href="./"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>Map</a></div>
+</header></div>
+<main>
+  <h2 class="h2">Cameras</h2>
+  <p class="lead" style="margin-bottom:.9rem">Public view. Live 511 Alberta cameras with the station readings 511 reports for each site.</p>
+  <div class="tog" role="tablist" aria-label="Camera area"><button data-d="all">All</button><button data-d="517" class="on">CMA 517</button><button data-d="518">CMA 518</button></div>
+  <div data-s="517"><div class="sec"><h3>CMA 517</h3></div><div class="grid" id="s517"></div></div>
+  <div data-s="518"><div class="sec"><h3>CMA 518</h3></div><div class="grid" id="s518"></div></div>
+  <div data-s="hwy2"><div class="sec"><h3>Other nearby, Hwy 2</h3></div><div class="grid" id="shwy2"></div></div>
+  <p class="lead" id="camMsg" style="margin:.6rem 0 0;font-size:.8rem" hidden></p>
+  <div class="btnrow"><button class="bb go2" id="bRf">Refresh cameras</button><a class="bb" href="./" style="display:flex;align-items:center;justify-content:center;text-decoration:none">Map</a></div>
+  <p class="foot">Real 511 Alberta camera images and station readings · a dash means 511 has no reading · albertaweatherradar.ca</p>
+</main>
+<script>
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+function dirTxt(d){ if(!d) return ''; var m={N:'north',S:'south',E:'east',W:'west'}; if(m[d]) return 'Facing '+m[d]; return d.replace(/ of HWY$/i,''); }
+function roadTxt(c){ var m=/Hwy\s*\d+/i.exec(c.name||c.label)||/HWY\s*\d+/i.exec(c.label); var r=m?m[0].replace(/hwy\s*/i,'Hwy '):''; if(!r&&/ESS_AB_ABDOT_0*(\d+)-/.test(c.name||'')) r='Hwy '+RegExp.$1; return [r,dirTxt(c.dir)].filter(Boolean).join(' · '); }
+function loadImgs(root){ root.querySelectorAll('img[data-img]').forEach(function(im){ im.loading='lazy'; im.onerror=function(){im.alt='Image unavailable from 511';}; im.src=ASRAuth.API+'/cameras/img/'+im.dataset.img+'?t='+STAMP; }); }
+var STAMP=Date.now();
+(function(){
+  var A=ASRAuth, cur='517', data=null;
+  function v(x){ return x?esc(x):'—'; }
+  function card(c){ var r=c.readings||{}, sec=c.district==='hwy2'?'Hwy 2':'CMA '+c.district;
+    return '<div class="cam"><img data-img="'+c.img+'" alt="'+esc(c.label)+'"><div class="i"><b>'+esc(c.label)+'</b><span class="rd">'+esc(roadTxt(c))+'</span><span>'+sec+' · time stamp on image</span>'+
+     '<div class="wx"><i>Air</i><em>'+v(r.air)+'</em><i>Pavement</i><em'+(c.pave_suspect?' class="sus"':'')+'>'+v(r.pavement)+(c.pave_suspect?' (sensor suspect)':'')+'</em><i>Wind</i><em>'+(r.wind?esc(r.wind)+(r.wind_dir?' '+esc(r.wind_dir):''):'—')+'</em><i>Humidity</i><em>'+v(r.humidity)+'</em><i>Updated</i><em>'+v(r.updated)+'</em></div>'+
+     (c.error?'<span class="sus">511: '+esc(c.error)+'</span>':'')+'</div></div>'; }
+  function show(){ document.querySelectorAll('[data-s]').forEach(function(s){ s.hidden=!(cur==='all'||s.dataset.s===cur); }); }
+  function load(){ var msg=document.getElementById('camMsg');
+    fetch(A.API+'/cameras?district=all').then(function(r){ if(!r.ok) throw 0; return r.json(); })
+     .then(function(j){ ['517','518','hwy2'].forEach(function(k){ var g=document.getElementById('s'+k); g.innerHTML=(j.sections[k]||[]).map(card).join(''); loadImgs(g); }); show(); msg.hidden=true; },
+       function(){ msg.hidden=false; msg.textContent='Could not load 511 cameras right now. Tap Refresh cameras to try again.'; }); }
+  document.querySelectorAll('.tog button').forEach(function(b){ b.onclick=function(){ document.querySelectorAll('.tog button').forEach(function(x){x.classList.toggle('on',x===b)}); cur=b.dataset.d; show(); }; });
+  show(); load();
+  bRf.onclick=function(){ STAMP=Date.now(); load(); };
+})();
+</script>
+</body></html>

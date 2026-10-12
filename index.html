@@ -600,7 +600,7 @@
     .side .panel { position: relative; inset: auto; width: auto; max-height: none; min-height: 0; overflow: visible; animation: none; flex: 0 0 auto; padding: 0.8rem 0.9rem; }
     .side .snowcard { order: -1; }
     .side .wx { margin-bottom: 0.7rem; padding-bottom: 0.65rem; border-bottom: 1px dashed var(--line); }
-    .fcbar { display: none; }   /* the 7-day link sits in the town card title at the top of the side column */
+    .fcbar:not(#camLink) { display: none; }   /* the 7-day link sits in the town card title at the top of the side column */
   }
   @media (min-width: 1280px) { :root { --side-w: 384px; } }
   /* v5.9 desktop only (not landscape phones): radar source, GeoMet, plows/roads and legend first in the side column,
@@ -757,6 +757,7 @@
         <div class="lg-body"><img alt="Legend" /><div class="lg-cap"></div></div>
       </details>
       <a class="fcbar" id="fcMapLink" href="forecast.html#three-hills" title="Open the 7-day forecast for each town">7-day forecast <span aria-hidden="true">&rsaquo;</span></a>
+      <a class="fcbar" id="camLink" href="public-cameras.html" title="Live 511 cameras, CMA 517 and 518">Cameras <span aria-hidden="true">&rsaquo;</span></a>
     </div>
   </section>
 

@@ -699,18 +699,16 @@ async function authRoutes(request, env, p, cors) {
     await env.DB.prepare('INSERT INTO access_requests (name, contact, grp, note, ip, created) VALUES (?, ?, ?, ?, ?, ?)').bind(name, contact, b.group, note || null, ip, now).run();
     return json({ ok: true }, 200, cors);
   }
-  // ---- cameras (session) ----
+  // ---- cameras (public since Oct 12 2026: public-cameras.html; landings use the same endpoints) ----
   if (p.startsWith('/cameras')) {
     if (M !== 'GET') return json({ error: 'method not allowed' }, 405, cors);
-    const s = await sessionUser(request, env);
-    if (!s) return json({ error: 'not signed in' }, 401, cors);
     const im = /^\/cameras\/img\/(\d+)$/.exec(p);
     if (im) {
       const id = Number(im[1]);
       if (!CAM_IMGS.has(id)) return json({ error: 'unknown camera image' }, 404, cors);
       const r = await fetch('https://511.alberta.ca/map/Cctv/' + id, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(10000), cf: { cacheTtl: 60, cacheEverything: true } });
       if (!r.ok) return json({ error: '511 image HTTP ' + r.status }, 502, cors);
-      return new Response(r.body, { headers: { 'Content-Type': r.headers.get('Content-Type') || 'image/jpeg', 'Cache-Control': 'private, max-age=60', ...cors } });
+      return new Response(r.body, { headers: { 'Content-Type': r.headers.get('Content-Type') || 'image/jpeg', 'Cache-Control': 'public, max-age=60', ...cors } });
     }
     if (p === '/cameras') {
       const d = new URL(request.url).searchParams.get('district') || '517';

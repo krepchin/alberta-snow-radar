@@ -40,7 +40,7 @@
   /* Side theming (Oct 12 2026): thin top band + small pill. theme-public / theme-gov / theme-emcon on <body>. */
   function theme() {
     var page = location.pathname.split('/').pop() || 'index.html';
-    var pub = ['index.html', 'outlook.html', 'forecast.html', 'login.html', 'admin.html'].indexOf(page) >= 0;
+    var pub = ['index.html', 'outlook.html', 'forecast.html', 'login.html', 'admin.html', 'public-cameras.html'].indexOf(page) >= 0;
     if (page === 'admin.html') return;
     var g = A.group(), t = pub ? 'public' : page === 'landing-emcon.html' ? 'emcon' : page === 'landing-gov.html' ? 'gov'
       : g === 'emcon' ? 'emcon' : g === 'both' && A.side() === 'emcon' ? 'emcon' : 'gov';
