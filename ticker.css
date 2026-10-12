@@ -1,0 +1,13 @@
+/* Shared 511 road events ticker (outlook.html, landing-gov.html, landing-emcon.html). Real 511 Alberta events only; fixed height; tap to pause. */
+#rtk{--tk-card:#0d1626;--tk-line:#1d2b44;--tk-text:#e6eef8;--tk-mute:#8aa0bd;--tk-hi:#ff6b6b;--tk-med:#ffb84d;
+  box-sizing:border-box;height:calc(68px + env(safe-area-inset-top));padding-top:env(safe-area-inset-top);background:var(--tk-card);border-bottom:1px solid var(--tk-line);overflow:hidden;position:relative;
+  font:21px/68px ui-monospace,Menlo,monospace;color:var(--tk-text);cursor:pointer;-webkit-user-select:none;user-select:none;text-align:left}
+#rtk[hidden]{display:none!important}
+#rtk+header{padding-top:8px}
+#rtk .tr{display:inline-flex;white-space:nowrap;will-change:transform;animation:rtk var(--dur,60s) linear infinite}
+#rtk.paused .tr,#rtk:hover .tr{animation-play-state:paused}
+#rtk .it{padding:0 22px 0 0}#rtk .it b{color:var(--tk-med);font-weight:600}#rtk .it b.cl{color:var(--tk-hi)}
+#rtk .st{display:block;padding:0 14px;color:var(--tk-mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:600px){#rtk{height:calc(58px + env(safe-area-inset-top));font-size:19px;line-height:58px}}
+@keyframes rtk{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+@media (prefers-reduced-motion:reduce){#rtk .tr{animation:none}#rtk{overflow-x:auto;-webkit-overflow-scrolling:touch}}

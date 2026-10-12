@@ -30,18 +30,8 @@ td.n{text-align:right;white-space:nowrap;font-family:var(--mono)}
 .legend-box summary{list-style:none;cursor:pointer;min-height:42px;display:flex;align-items:center;justify-content:space-between;gap:.5rem;padding:0 .8rem;font:600 .7rem/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--mute)}
 .legend-box summary::-webkit-details-marker{display:none}.legend-box .lg-body{padding:0 .8rem .6rem;font-size:.8rem}
 .legend-box i{display:inline-block;width:18px;height:4px;border-radius:2px;margin-right:6px;vertical-align:middle}
-/* v6.3 road events ticker (Kent 2026-10-12): real 511 Alberta events only; fixed height, pauses on tap/hover */
-#rtk{height:calc(68px + env(safe-area-inset-top));padding-top:env(safe-area-inset-top);background:var(--card);border-bottom:1px solid var(--line);overflow:hidden;position:relative;font:21px/68px var(--mono);color:var(--text);cursor:pointer;-webkit-user-select:none;user-select:none}
-#rtk+header{padding-top:8px}
-#rtk .tr{display:inline-flex;white-space:nowrap;will-change:transform;animation:rtk var(--dur,60s) linear infinite}
-#rtk.paused .tr,#rtk:hover .tr{animation-play-state:paused}
-#rtk .it{padding:0 22px 0 0}#rtk .it b{color:var(--med);font-weight:600}#rtk .it b.cl{color:var(--hi)}
-#rtk .st{display:block;padding:0 14px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-@media (max-width:600px){#rtk{height:calc(58px + env(safe-area-inset-top));font-size:19px;line-height:58px}}
-@keyframes rtk{from{transform:translateX(0)}to{transform:translateX(-50%)}}
-@media (prefers-reduced-motion:reduce){#rtk .tr{animation:none}#rtk{overflow-x:auto;-webkit-overflow-scrolling:touch}}
 </style>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script src="auth.js"></script></head><body>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script src="auth.js"></script><link rel="stylesheet" href="ticker.css"></head><body>
 <div id="rtk" role="marquee" aria-label="Current 511 Alberta road events" title="Tap to pause"><span class="st">Loading road events…</span></div>
 <header><a href="index.html">‹ Map</a><h1>Outlook</h1><a href="login.html">Sign in ›</a></header>
 <main>
@@ -186,22 +176,4 @@ function drawMap(){
 load();setInterval(load,600000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&DATA&&Date.now()-DATA.t>60000)load()});
 </script>
-<script>
-/* v6.3 ticker: 511 Alberta events via relay /roadevents (Central Alberta covered area). Never invents events. */
-(function(){
-const box=document.getElementById('rtk'),URL_='https://alberta-plow-relay.krepchin.workers.dev/roadevents';
-const esc=t=>String(t==null?'':t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const TY={closures:'Closure',accidentsAndIncidents:'Incident',roadwork:'Roadwork',generalInfo:'Advisory',specialEvents:'Event'};
-const st=t=>{box.innerHTML='<span class="st">'+esc(t)+'</span>'};
-box.addEventListener('click',()=>box.classList.toggle('paused'));
-async function go(){
-  let d;try{const r=await fetch(URL_,{cache:'no-store'});d=await r.json();if(!r.ok||d.error||!Array.isArray(d.events))throw 0}catch(e){st('Road events unavailable');return}
-  if(!d.events.length){st('No road events right now');return}
-  const one=d.events.map(e=>{const cl=e.full_closure||e.type==='closures';const desc=String(e.description||'').replace(/\s+/g,' ').replace(/\s*Activities:.*$/,'').trim();
-    return '<span class="it"><b'+(cl?' class="cl"':'')+'>'+esc(TY[e.type]||e.type||'Event')+(e.road?' · '+esc(e.road):'')+'</b> '+esc(desc)+'</span>'}).join('')+'<span class="it" style="color:var(--mute)">Source: 511 Alberta</span>';
-  box.innerHTML='<span class="tr">'+one+one+'</span>';
-  const tr=box.firstChild;tr.style.setProperty('--dur',Math.max(20,Math.round(tr.scrollWidth/2/45))+'s');
-}
-go();setInterval(go,300000);
-})();
-</script></body></html>
+<script src="ticker.js" data-page="outlook"></script></body></html>

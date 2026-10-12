@@ -154,6 +154,7 @@
 
 </style>
 <script src="auth.js"></script>
+<link rel="stylesheet" href="ticker.css">
 </head>
 <body>
 <div class="topbar"><header class="hdr">
@@ -194,4 +195,5 @@ function loadImgs(root){ root.querySelectorAll('img[data-img]').forEach(function
   bRf.onclick=function(){ var d=document.querySelector('.tog .on').dataset.d; blobs.forEach(URL.revokeObjectURL); blobs=[]; loaded={}; load(d,true); };
 })();
 </script>
+<script src="ticker.js" data-page="emcon"></script>
 </body></html>

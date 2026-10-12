@@ -57,3 +57,5 @@ CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id INTEGER NOT
 CREATE TABLE IF NOT EXISTS login_events (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, grp TEXT, success INTEGER NOT NULL, ts INTEGER NOT NULL, ua TEXT, ip24 TEXT);
 CREATE TABLE IF NOT EXISTS page_hits (day TEXT PRIMARY KEY, n INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS page_uniques (day TEXT NOT NULL, h TEXT NOT NULL, PRIMARY KEY (day, h));  -- daily-salted hashes, today only
+-- Oct 12 2026: site settings (511 ticker placement: off|gov|emcon|both)
+CREATE TABLE IF NOT EXISTS settings (k TEXT PRIMARY KEY, v TEXT NOT NULL, t INTEGER NOT NULL);

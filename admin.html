@@ -145,6 +145,7 @@
   .seg2 .on{border-color:rgba(20,224,192,.6);background:rgba(20,224,192,.1);box-shadow:0 0 14px rgba(20,224,192,.15)}
 
   .msg{margin:.6rem 0 0;font:500 .72rem/1.45 var(--mono);color:var(--muted)} .msg.err{color:var(--red)} .msg.ok{color:var(--teal)}
+  .seg4{grid-template-columns:1fr 1fr 1fr 1fr} @media (max-width:420px){.seg4{grid-template-columns:1fr 1fr}}
   .seg2 label{cursor:pointer} .seg2 input{position:absolute;opacity:0;pointer-events:none}
   .empty{margin:.2rem 0;font:500 .72rem/1.45 var(--mono);color:var(--muted)}
   .row .ap{display:none;width:100%} .row.open .ap{display:block} .row .ap .field{margin:.5rem 0}
@@ -167,6 +168,9 @@
   </form>
   <div id="adm" hidden>
   <p class="lead">Approve or deny requests, add accounts, and manage access.</p>
+  <section class="panel" id="tkPanel" style="margin-bottom:12px"><h3 class="st">511 road events strip</h3>
+    <span class="k">Show on landing pages</span><div class="seg2 seg4" id="tkSeg"><label><input type="radio" name="tk" value="off">Off</label><label><input type="radio" name="tk" value="gov">Government page</label><label><input type="radio" name="tk" value="emcon">Emcon page</label><label><input type="radio" name="tk" value="both">Both</label></div>
+    <p class="msg" id="tkMsg" role="status"></p></section>
   <section class="panel" style="margin-bottom:12px"><h3 class="st">Access requests</h3><div id="reqs"></div></section>
   <form class="panel" id="addForm" style="margin-bottom:12px"><h3 class="st">Add account</h3>
     <span class="k">Group</span><div class="seg2"><label class="on"><input type="radio" name="g" value="gov" checked>Alberta Government</label><label><input type="radio" name="g" value="emcon">Emcon Services</label><label><input type="radio" name="g" value="both">Both</label></div>
@@ -193,7 +197,13 @@
     call('/admin/check').then(function(){ f.hidden=true; adm.hidden=false; refresh(); }, function(e){ msg.className='msg err'; msg.textContent=e.message; }); }
   f.onsubmit=function(e){ e.preventDefault(); try{sessionStorage.setItem(K,ap.value)}catch(x){} open(); };
   if(pw()) open();
+  var TKN={off:'Off (hidden everywhere, including Road Genie)',gov:'Government page (+ Road Genie)',emcon:'Emcon page (+ Road Genie)',both:'Both pages (+ Road Genie)'};
+  function tkShow(v,saved){ tkSeg.querySelectorAll('label').forEach(function(l){ var i=l.querySelector('input'); i.checked=i.value===v; l.classList.toggle('on',i.checked); });
+    tkMsg.className='msg'+(saved?' ok':''); tkMsg.textContent=(saved?'Saved. ':'')+'Current: '+TKN[v]; }
+  tkSeg.querySelectorAll('input').forEach(function(i){ i.onchange=function(){ tkMsg.className='msg'; tkMsg.textContent='Saving…';
+    call('/admin/settings',{ticker:i.value}).then(function(j){ tkShow(j.ticker,true); },function(x){ tkMsg.className='msg err'; tkMsg.textContent=x.message; call('/admin/settings').then(function(j){tkShow(j.ticker)}); }); }; });
   function refresh(){
+    call('/admin/settings').then(function(j){ tkShow(j.ticker); },function(e){ tkMsg.className='msg err'; tkMsg.textContent=e.message; });
     call('/admin/requests').then(function(j){ var p=j.requests.filter(function(r){return r.status==='pending'});
       reqs.innerHTML=p.length?p.map(function(r){ return '<div class="row" data-id="'+r.id+'" data-g="'+r.group+'"><div class="who"><b>'+esc(r.name)+'</b><span>Requested '+day(r.created)+' · '+esc(r.contact)+(r.note?' · '+esc(r.note):'')+'</span></div>'+tag(r.group)+
         '<div class="btns"><button class="b" data-a="approve">Approve</button><button class="b no" data-a="deny">Deny</button></div>'+

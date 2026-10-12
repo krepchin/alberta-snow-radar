@@ -51,6 +51,7 @@ export default {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...cors, 'Access-Control-Max-Age': '86400' } });
     const p = url.pathname.replace(/\/+$/, '') || '/';
     try {
+      if (p === '/settings/ticker' && request.method === 'GET') return json(await getTicker(env), 200, { ...cors, 'Cache-Control': 'no-store' });
       if (/^\/(auth|admin|cameras|gps|hit)(\/|$)/.test(p)) return await authRoutes(request, env, p, cors);
       if (request.method !== 'GET') return json({ error: 'method not allowed' }, 405, cors);
       if (p === '/') return new Response('alberta-snow-events: GET /events/config · /events/status · /events · /events/{id} · /events/{id}/csv · /roadlog/days · /roadlog/{YYYY-MM-DD} · /roadlog/{YYYY-MM-DD}/csv. Data: Open-Meteo, 511 Alberta.\n',
@@ -560,8 +561,16 @@ const AUTH_SCHEMA = [
   "CREATE TABLE IF NOT EXISTS login_events (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, grp TEXT, success INTEGER NOT NULL, ts INTEGER NOT NULL, ua TEXT, ip24 TEXT)",
   "CREATE TABLE IF NOT EXISTS page_hits (day TEXT PRIMARY KEY, n INTEGER NOT NULL DEFAULT 0)",
   "CREATE TABLE IF NOT EXISTS page_uniques (day TEXT NOT NULL, h TEXT NOT NULL, PRIMARY KEY (day, h))",
-  "CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id INTEGER NOT NULL, expires INTEGER NOT NULL, created INTEGER NOT NULL)"
+  "CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id INTEGER NOT NULL, expires INTEGER NOT NULL, created INTEGER NOT NULL)",
+  "CREATE TABLE IF NOT EXISTS settings (k TEXT PRIMARY KEY, v TEXT NOT NULL, t INTEGER NOT NULL)"
 ];
+// 511 ticker placement (Kent 2026-10-12): off | gov | emcon | both (default both)
+const TICKER_VALUES = ['off', 'gov', 'emcon', 'both'];
+async function getTicker(env) {
+  await ensureAuth(env);
+  const r = await env.DB.prepare("SELECT v, t FROM settings WHERE k = 'ticker'").first();
+  return { ticker: r && TICKER_VALUES.includes(r.v) ? r.v : 'both', updated: r ? r.t : null };
+}
 let authReady = false;
 async function ensureAuth(env) {
   if (authReady) return;
@@ -746,6 +755,12 @@ async function authRoutes(request, env, p, cors) {
       return null;
     };
     if (p === '/admin/check' && M === 'GET') return json({ ok: true }, 200, cors);
+    if (p === '/admin/settings' && M === 'GET') return json(await getTicker(env), 200, cors);
+    if (p === '/admin/settings' && M === 'POST') {
+      if (!TICKER_VALUES.includes(b.ticker)) return json({ error: 'ticker must be off, gov, emcon or both' }, 400, cors);
+      await env.DB.prepare("INSERT INTO settings (k, v, t) VALUES ('ticker', ?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v, t = excluded.t").bind(b.ticker, now).run();
+      return json(await getTicker(env), 200, cors);
+    }
     if (p === '/admin/requests' && M === 'GET')
       return json({ requests: (await env.DB.prepare("SELECT id, name, contact, grp AS 'group', note, status, created, decided FROM access_requests ORDER BY (status = 'pending') DESC, created DESC LIMIT 200").all()).results }, 200, cors);
     if (p === '/admin/logins' && M === 'GET') {
