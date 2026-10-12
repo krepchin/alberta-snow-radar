@@ -2112,5 +2112,7 @@ async function boot() {
 }
 boot().catch(e => { console.error(e); setStatus('Startup failed: ' + errText(e), 'error'); });
 </script>
+<script>/* main page visit count: one POST, no cookies; skipped with Do Not Track */
+(function(){try{if(navigator.doNotTrack==='1'||window.doNotTrack==='1'||navigator.globalPrivacyControl)return;fetch('https://alberta-snow-events.krepchin.workers.dev/hit',{method:'POST',mode:'cors',credentials:'omit',keepalive:true}).catch(function(){});}catch(e){}})();</script>
 </body>
 </html>

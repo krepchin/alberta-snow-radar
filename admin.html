@@ -173,7 +173,8 @@
     <div class="field"><label class="k" for="nu">Username</label><input id="nu" placeholder="Username" autocapitalize="none" autocorrect="off" autocomplete="off" required></div>
     <div class="field"><label class="k" for="np">Password</label><input id="np" type="password" placeholder="••••••••" autocomplete="new-password" required minlength="8"></div>
     <button class="go" type="submit">Create account</button><p class="msg" role="status"></p></form>
-  <section class="panel"><h3 class="st">Current accounts</h3><div id="users"></div></section>
+  <section class="panel" style="margin-bottom:12px"><h3 class="st">Current accounts</h3><div id="users"></div></section>
+  <section class="panel"><h3 class="st">Login activity</h3><div id="acts"></div></section>
   </div>
   <p class="foot">albertaweatherradar.ca</p>
 </main>
@@ -202,6 +203,12 @@
       users.innerHTML=j.users.length?j.users.map(function(u){ return '<div class="row'+(u.status==='revoked'?' rv':'')+'" data-id="'+u.id+'"><div class="who"><b>'+esc(u.username)+'</b><span>'+(u.status==='revoked'?'Revoked':'Active')+' · added '+day(u.created)+'</span></div>'+tag(u.group)+
         '<div class="btns"><button class="b gh" data-a="reset">Reset password</button>'+(u.status==='revoked'?'<button class="b" data-a="restore">Restore</button>':'<button class="b no" data-a="revoke">Revoke</button>')+'</div></div>'; }).join(''):'<p class="empty">No accounts yet.</p>';
     }, function(e){ users.innerHTML='<p class="empty">'+esc(e.message)+'</p>'; });
+    call('/admin/logins?days=30').then(function(j){ var L=j.logins, V=j.visits;
+      var TF=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Edmonton',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
+      acts.innerHTML='<p class="empty">Successful logins: '+L.today+' today / '+L.d7+' 7 days / '+L.all+' all time</p>'+
+        '<p class="empty">Main page visits: '+V.today+' today / '+V.d7+' 7 days / '+V.all+' all time ('+V.unique_today+' unique today)</p>'+
+        (j.events.length?j.events.map(function(e){ return '<div class="row"><div class="who"><b>'+esc(e.username||'—')+'</b><span>'+TF.format(new Date(e.ts))+' MT · '+(e.success?'Success':'Failed')+(e.ua?' · '+esc(e.ua):'')+'</span></div>'+(e.group?tag(e.group):'')+'</div>'; }).join(''):'<p class="empty">No sign-in attempts in the last 30 days.</p>');
+    }, function(e){ acts.innerHTML='<p class="empty">'+esc(e.message)+'</p>'; });
   }
   reqs.onclick=function(e){ var b=e.target.closest('button'); if(!b) return; var row=b.closest('.row'), id=row.dataset.id, msg=row.querySelector('.ap .msg');
     if(b.dataset.a==='approve'){ row.classList.toggle('open'); return; }

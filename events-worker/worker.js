@@ -51,7 +51,7 @@ export default {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...cors, 'Access-Control-Max-Age': '86400' } });
     const p = url.pathname.replace(/\/+$/, '') || '/';
     try {
-      if (/^\/(auth|admin|cameras|gps)(\/|$)/.test(p)) return await authRoutes(request, env, p, cors);
+      if (/^\/(auth|admin|cameras|gps|hit)(\/|$)/.test(p)) return await authRoutes(request, env, p, cors);
       if (request.method !== 'GET') return json({ error: 'method not allowed' }, 405, cors);
       if (p === '/') return new Response('alberta-snow-events: GET /events/config · /events/status · /events · /events/{id} · /events/{id}/csv · /roadlog/days · /roadlog/{YYYY-MM-DD} · /roadlog/{YYYY-MM-DD}/csv. Data: Open-Meteo, 511 Alberta.\n',
         { headers: { 'Content-Type': 'text/plain; charset=utf-8', ...cors } });
@@ -557,6 +557,9 @@ async function eventCsv(env, id, cors) {
 const AUTH_SCHEMA = [
   "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE COLLATE NOCASE, grp TEXT NOT NULL CHECK (grp IN ('gov','emcon')), salt TEXT NOT NULL, hash TEXT NOT NULL, iter INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'active', created INTEGER NOT NULL)",
   "CREATE TABLE IF NOT EXISTS access_requests (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, contact TEXT NOT NULL, grp TEXT NOT NULL, note TEXT, status TEXT NOT NULL DEFAULT 'pending', ip TEXT, created INTEGER NOT NULL, decided INTEGER)",
+  "CREATE TABLE IF NOT EXISTS login_events (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, grp TEXT, success INTEGER NOT NULL, ts INTEGER NOT NULL, ua TEXT, ip24 TEXT)",
+  "CREATE TABLE IF NOT EXISTS page_hits (day TEXT PRIMARY KEY, n INTEGER NOT NULL DEFAULT 0)",
+  "CREATE TABLE IF NOT EXISTS page_uniques (day TEXT NOT NULL, h TEXT NOT NULL, PRIMARY KEY (day, h))",
   "CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id INTEGER NOT NULL, expires INTEGER NOT NULL, created INTEGER NOT NULL)"
 ];
 let authReady = false;
@@ -652,6 +655,7 @@ async function authRoutes(request, env, p, cors) {
     const row = await env.DB.prepare("SELECT * FROM users WHERE username = ? AND status = 'active'").bind(u).first();
     const ok = row && row.grp === b.group && safeEq(await pbkdf2(b.password, row.salt, row.iter), row.hash);
     if (!row) await pbkdf2(b.password, b64(new Uint8Array(16)), PBKDF2_ITER);   // similar timing for unknown users
+    await logLogin(env, request, u || String(b.username || '').slice(0, 64), b.group, !!ok, now);
     if (!ok) return json({ error: 'wrong username or password' }, 401, cors);
     const token = hex(crypto.getRandomValues(new Uint8Array(32)));
     await env.DB.batch([
@@ -669,6 +673,7 @@ async function authRoutes(request, env, p, cors) {
     const s = await sessionUser(request, env);
     return s ? json({ username: s.username, group: s.grp, expires: s.expires }, 200, cors) : json({ error: 'not signed in' }, 401, cors);
   }
+  if (p === '/hit' && M === 'POST') return json(await countHit(env, request, now), 200, cors);
   if (p === '/auth/request' && M === 'POST') {
     const b = await body(request);
     const name = String(b.name || '').trim(), contact = String(b.contact || '').trim(), note = String(b.note || '').trim();
@@ -738,6 +743,19 @@ async function authRoutes(request, env, p, cors) {
     if (p === '/admin/check' && M === 'GET') return json({ ok: true }, 200, cors);
     if (p === '/admin/requests' && M === 'GET')
       return json({ requests: (await env.DB.prepare("SELECT id, name, contact, grp AS 'group', note, status, created, decided FROM access_requests ORDER BY (status = 'pending') DESC, created DESC LIMIT 200").all()).results }, 200, cors);
+    if (p === '/admin/logins' && M === 'GET') {
+      const days = Math.max(1, Math.min(365, Number(new URL(request.url).searchParams.get('days')) || 30));
+      const today = DAY_FMT.format(new Date(now)), d7 = DAY_FMT.format(new Date(now - 6 * 86400000));
+      const okRows = (await env.DB.prepare('SELECT ts FROM login_events WHERE success = 1').all()).results.map(r => DAY_FMT.format(new Date(r.ts)));
+      const list = (await env.DB.prepare("SELECT username, grp AS 'group', success, ts, ua, ip24 FROM login_events WHERE ts > ? ORDER BY ts DESC LIMIT 500").bind(now - days * 86400000).all()).results;
+      const hits = (await env.DB.prepare('SELECT day, n FROM page_hits').all()).results;
+      const uq = await env.DB.prepare('SELECT COUNT(*) n FROM page_uniques WHERE day = ?').bind(today).first();
+      const since = await env.DB.prepare("SELECT k, t FROM state WHERE k IN ('logins_since','hits_since')").all();
+      const sinceMap = Object.fromEntries(since.results.map(r => [r.k, r.t]));
+      return json({ logins: { today: okRows.filter(d => d === today).length, d7: okRows.filter(d => d >= d7).length, all: okRows.length, since: sinceMap.logins_since || null },
+        visits: { today: (hits.find(h => h.day === today) || { n: 0 }).n, d7: hits.filter(h => h.day >= d7).reduce((a, h) => a + h.n, 0), all: hits.reduce((a, h) => a + h.n, 0), unique_today: uq.n, since: sinceMap.hits_since || null },
+        events: list }, 200, cors);
+    }
     if (p === '/admin/users' && M === 'GET')
       return json({ users: (await env.DB.prepare("SELECT id, username, grp AS 'group', status, created FROM users ORDER BY status, username").all()).results }, 200, cors);
     let m;
@@ -825,4 +843,46 @@ async function gpsStep(env, plows, now) {
   ev.push(upsert(db, 'gps', next, now));
   if (!row) ev.push(upsert(db, 'gps_since', now, now));
   await db.batch(ev);
+}
+
+/* ---------------- login activity + main page visits (Oct 12 2026; no backfill) ---------------- */
+function coarseUA(ua) {
+  ua = ua || '';
+  const dev = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : 'Other';
+  const br = /Edg\//.test(ua) ? 'Edge' : /CriOS|Chrome\//.test(ua) ? 'Chrome' : /FxiOS|Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'other browser';
+  return dev + ' ' + br;
+}
+function ip24(ip) {
+  if (!ip) return '';
+  if (ip.includes('.')) return ip.split('.').slice(0, 3).join('.') + '.0/24';
+  return ip.split(':').slice(0, 3).join(':') + '::/48';   // IPv6: keep the /48 prefix only
+}
+async function logLogin(env, request, username, grp, ok, now) {
+  try {
+    const stmts = [env.DB.prepare('INSERT INTO login_events (username, grp, success, ts, ua, ip24) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(String(username || '').slice(0, 64), GROUPS.includes(grp) ? grp : null, ok ? 1 : 0, now, coarseUA(request.headers.get('User-Agent')), ip24(request.headers.get('CF-Connecting-IP')))];
+    stmts.push(env.DB.prepare("INSERT OR IGNORE INTO state (k, v, t) VALUES ('logins_since', '1', ?)").bind(now));
+    await env.DB.batch(stmts);
+  } catch (e) { console.log('login log failed', safeMsg(e)); }
+}
+const BOT_RE = /bot|crawl|spider|slurp|preview|facebookexternalhit|embedly|headless|lighthouse|pingdom|uptime|monitor|curl|wget|python|httpclient|go-http|java\/|okhttp|axios|node-fetch|scrapy/i;
+async function countHit(env, request, now) {
+  const ua = request.headers.get('User-Agent') || '';
+  if (request.headers.get('DNT') === '1' || request.headers.get('Sec-GPC') === '1') return { counted: false, reason: 'dnt' };
+  if (!ua || BOT_RE.test(ua)) return { counted: false, reason: 'bot' };
+  const day = DAY_FMT.format(new Date(now));
+  // daily salt: random, kept only in the state row for today, replaced each day, so yesterday's hashes can't be recomputed
+  let salt = await env.DB.prepare("SELECT v FROM state WHERE k = 'hit_salt'").first();
+  salt = salt ? parse(salt.v, null) : null;
+  if (!salt || salt.day !== day) {
+    salt = { day, s: hex(crypto.getRandomValues(new Uint8Array(16))) };
+    await env.DB.batch([upsert(env.DB, 'hit_salt', salt, now), env.DB.prepare('DELETE FROM page_uniques WHERE day < ?').bind(day)]);
+  }
+  const h = hex(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(salt.s + '|' + (request.headers.get('CF-Connecting-IP') || '') + '|' + ua)))).slice(0, 32);
+  await env.DB.batch([
+    env.DB.prepare('INSERT INTO page_hits (day, n) VALUES (?, 1) ON CONFLICT(day) DO UPDATE SET n = n + 1').bind(day),
+    env.DB.prepare('INSERT OR IGNORE INTO page_uniques (day, h) VALUES (?, ?)').bind(day, h),
+    env.DB.prepare("INSERT OR IGNORE INTO state (k, v, t) VALUES ('hits_since', '1', ?)").bind(now)
+  ]);
+  return { counted: true };
 }
