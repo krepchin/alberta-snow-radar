@@ -670,6 +670,7 @@
   <a href="#castor" data-place="castor" data-cma="518"><span class="pin" aria-hidden="true"></span>Castor</a>
   <a href="#consort" data-place="consort" data-cma="518"><span class="pin" aria-hidden="true"></span>Consort</a>
   <a href="#czar" data-place="czar" data-cma="518"><span class="pin" aria-hidden="true"></span>Czar</a>
+  <a href="login.html" id="siNavLink">Sign in</a>
 </nav>
 
 <div class="stage">
@@ -736,7 +737,6 @@
       </details>
       <a class="fcbar" id="fcMapLink" href="forecast.html#three-hills" title="Open the 7-day forecast for each town">7-day forecast <span aria-hidden="true">&rsaquo;</span></a>
       <a class="fcbar evlink" id="rgMapLink" href="outlook.html" title="Outlook: weather and CMA 517 road predictions for Three Hills, Drumheller and Stettler">Road Genie <span aria-hidden="true">&rsaquo;</span></a>
-      <a class="fcbar evlink" id="siMapLink" href="login.html">Sign in <span aria-hidden="true">&rsaquo;</span></a>
     </div>
   </section>
 
@@ -1351,7 +1351,7 @@ function goToPlace(id, opts) {
   opts = opts || {};
   activePlace = id;
   updateFcLink();
-  document.querySelectorAll('.townnav a').forEach(a => {
+  document.querySelectorAll('.townnav a[data-place]').forEach(a => {
     const on = a.dataset.place === id;
     a.classList.toggle('active', on);
     if (on) a.setAttribute('aria-current', 'true'); else a.removeAttribute('aria-current');
@@ -1662,7 +1662,7 @@ function wireUi() {
   $('fcPlay').onclick = () => toggleFcPlay();
   $('fcPrev').onclick = () => stepFc(-1);
   $('fcNext').onclick = () => stepFc(1);
-  document.querySelectorAll('.townnav a').forEach(a => {
+  document.querySelectorAll('.townnav a[data-place]').forEach(a => {
     a.addEventListener('click', e => { e.preventDefault(); goToPlace(a.dataset.place); });
   });
   window.addEventListener('hashchange', () => goToPlace(placeFromHash(), { updateHash: false }));
