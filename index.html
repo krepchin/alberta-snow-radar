@@ -498,7 +498,7 @@
     .townnav { padding: 0.4rem 0.5rem; gap: 4px; }
     .townnav a { font-size: 0.84rem; padding: 0.3rem 0.25rem; gap: 0.3rem; min-height: 44px; }
     .townnav .pin { display: none; }
-    .stage { display: flex; flex-direction: column; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; }
+    .stage { display: flex; flex-direction: column; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-y: auto; }
     /* map fills the screen under the control bar; town card + status scroll in below it */
     #radarMap { order: 1; position: relative; inset: auto; flex: 1 0 auto; min-height: 280px; min-height: max(280px, calc(100vh - 280px)); min-height: max(280px, calc(100svh - 280px)); }
     .stage::after { display: none; }
@@ -644,7 +644,7 @@
   .toolrow { flex-wrap: wrap; row-gap: 0.4rem; }
   .snowcard .fc-title { flex-wrap: wrap; row-gap: 0.4rem; }
 </style>
-<script src="auth.js"></script></head>
+<script src="auth.js"></script><script src="map-coop.js"></script></head>
 <body>
 <div class="nojs" role="alert">
   <strong>This page's scripts are not running.</strong>
@@ -1655,6 +1655,7 @@ function initMap() {
     fadeAnimation: !REDUCED_MOTION, zoomAnimation: !REDUCED_MOTION, markerZoomAnimation: !REDUCED_MOTION
   }).setView(REGION.center, REGION.zoom);
   L.control.zoom({ position: 'topright' }).addTo(radarMap);
+  if (window.coopMap) coopMap(radarMap);
   radarMap.createPane('labels');
   radarMap.getPane('labels').style.zIndex = 450;
   radarMap.getPane('labels').style.pointerEvents = 'none';

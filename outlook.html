@@ -31,7 +31,7 @@ td.n{text-align:right;white-space:nowrap;font-family:var(--mono)}
 .legend-box summary::-webkit-details-marker{display:none}.legend-box .lg-body{padding:0 .8rem .6rem;font-size:.8rem}
 .legend-box i{display:inline-block;width:18px;height:4px;border-radius:2px;margin-right:6px;vertical-align:middle}
 </style>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script src="auth.js"></script><link rel="stylesheet" href="ticker.css"></head><body>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script src="auth.js"></script><link rel="stylesheet" href="ticker.css"><script src="map-coop.js"></script></head><body>
 <div id="rtk" role="marquee" aria-label="Current 511 Alberta road events" title="Tap to pause"><span class="st">Loading road events…</span></div>
 <header><a href="index.html">‹ Map</a><h1>Outlook</h1><a href="public-cameras.html">Cameras ›</a><a href="login.html">Sign in ›</a></header>
 <main>
@@ -160,7 +160,7 @@ function drawMap(){
   document.querySelectorAll('#dayTabs button').forEach(b=>b.onclick=()=>{MDAY=+b.dataset.d;drawMap()});
   $('#lg').innerHTML=[['#ef4444','Score 5 or more'],['#f97316','Score 2 to 5'],['#facc15','Score above 0, under 2'],['#22c55e','Score 0 (nothing flagged)'],['#94a3b8','No forecast data']].map(x=>'<div><i style="background:'+x[0]+'"></i>'+x[1]+'</div>').join('')+'<div class="src">'+dayLbl(MDAY)+'. Day 1 includes the current 511 condition; days 2–3 use forecast snow and history only.</div>';
   if(!window.L){$('#map').innerHTML='<p class="note" style="padding:10px">Map library did not load.</p>';return}
-  if(!map){map=L.map('map',{zoomControl:true,attributionControl:true}).setView([51.9,-112.95],8);
+  if(!map){map=L.map('map',{zoomControl:true,attributionControl:true}).setView([51.9,-112.95],8);if(window.coopMap)coopMap(map);
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',{maxZoom:16,attribution:'Tiles &copy; Esri'}).addTo(map);
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}',{maxZoom:16}).addTo(map)}
   if(segLayer)segLayer.remove();
