@@ -181,7 +181,7 @@
   /* ---------- Town navigation ---------- */
   .townnav {
     flex: 0 0 auto; position: relative; z-index: 1090;
-    display: grid; grid-template-columns: minmax(0, 1fr) 30px repeat(3, minmax(0, 1fr)); gap: 6px;   /* v5.8: Region | CMA label | 3 towns, one row per CMA */
+    display: grid; grid-template-columns: minmax(0, 1fr) 30px repeat(3, minmax(0, 1fr)) auto; gap: 6px;   /* v6.1: + Sign in column (top row, right); v5.8: Region | CMA label | 3 towns, one row per CMA */
     padding: 0.45rem 1rem;
     background: rgba(6, 11, 20, 0.97);
     border-bottom: 1px solid var(--line);
@@ -204,6 +204,11 @@
     box-shadow: var(--glow); text-shadow: 0 0 8px rgba(20,224,192,0.6);
   }
   .townnav a[data-place="region"] { grid-row: span 2; }
+  /* Sign in: always in the top row (right edge, spans both rows like Region); orange accent per Kent 2026-10-12 */
+  .townnav a#siNavLink { grid-column: 6; grid-row: 1 / span 2; padding: 0.35rem 0.6rem;
+    color: #1f0e02; border-color: #ff8a1f; background: linear-gradient(180deg, #ff9a3c, #ff8a1f); }
+  .townnav a#siNavLink:hover { color: #000; border-color: #ffb366; }
+  @media (max-width: 440px) { .townnav a#siNavLink { padding: 0.3rem 0.35rem; white-space: normal; text-align: center; line-height: 1.15; max-width: 3.4rem; } }
   .townnav .cmalbl { display: flex; flex-direction: column; align-items: center; justify-content: center; font: 600 0.52rem/1.15 var(--mono);
     letter-spacing: 0.06em; color: var(--dim); text-align: center; }
   .townnav .cmalbl b { font-size: 0.7rem; color: var(--muted); letter-spacing: 0.02em; }
