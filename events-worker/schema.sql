@@ -37,3 +37,14 @@ CREATE TABLE IF NOT EXISTS state (     -- latest observation only (not a history
   v TEXT NOT NULL,
   t INTEGER NOT NULL
 );
+-- v5.9: daily log of every 511 road condition update for CMA 517 / CMA 518 (recorded all the time, not only during events)
+CREATE TABLE IF NOT EXISTS road_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  day TEXT NOT NULL,                   -- YYYY-MM-DD, America/Edmonton
+  t INTEGER NOT NULL,                  -- observed by this worker (ms)
+  kind TEXT NOT NULL,                  -- 'initial' (baseline) | 'change' | 'update' (511 LastUpdated bumped, same condition)
+  seg_id TEXT NOT NULL, area TEXT, road TEXT, location TEXT,
+  from_cond TEXT, to_cond TEXT, secondary TEXT, visibility TEXT,
+  seg_updated INTEGER                  -- 511 LastUpdated (ms)
+);
+CREATE INDEX IF NOT EXISTS idx_rl_day ON road_log (day, t);

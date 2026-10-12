@@ -52,13 +52,16 @@ export default {
     if (request.method !== 'GET') return json({ error: 'method not allowed' }, 405, cors);
     const p = url.pathname.replace(/\/+$/, '') || '/';
     try {
-      if (p === '/') return new Response('alberta-snow-events: GET /events/config · /events/status · /events · /events/{id} · /events/{id}/csv. Data: Open-Meteo, 511 Alberta.\n',
+      if (p === '/') return new Response('alberta-snow-events: GET /events/config · /events/status · /events · /events/{id} · /events/{id}/csv · /roadlog/days · /roadlog/{YYYY-MM-DD} · /roadlog/{YYYY-MM-DD}/csv. Data: Open-Meteo, 511 Alberta.\n',
         { headers: { 'Content-Type': 'text/plain; charset=utf-8', ...cors } });
       if (p === '/events/config') return json({ enabled: true, trucks: 'emcon' }, 200, { ...cors, 'Cache-Control': 'public, max-age=60' });
       if (p === '/events/status') return json(await status(env), 200, cors);
       if (p === '/events') return listEvents(env, cors);
       const dm = /^\/events\/(\d+)(\/csv)?$/.exec(p);
       if (dm) return dm[2] ? eventCsv(env, Number(dm[1]), cors) : eventDetail(env, Number(dm[1]), cors);
+      if (p === '/roadlog/days') return roadLogDays(env, cors);
+      const rl = /^\/roadlog\/(\d{4}-\d{2}-\d{2})(\/csv)?$/.exec(p);
+      if (rl) return rl[2] ? roadLogCsv(env, rl[1], cors) : json(await roadLogDay(env, rl[1]), 200, cors);
       return json({ error: 'not found' }, 404, cors);
     } catch (e) {
       return json({ error: 'server error: ' + String(e && e.message || e).slice(0, 200) }, 500, cors);
@@ -128,7 +131,8 @@ async function getRoads(env) {
     const p = f.properties || {};
     if (p.id == null) continue;
     if (!/^CMA 51[78] - /.test(p.area || '')) continue;   // v5.8.4: Central Alberta only (CMA 517 + CMA 518); other areas in the relay box are never stored
-    segs[String(p.id)] = { c: p.condition || null, r: p.road || '', l: p.location || '', a: p.area || '', u: p.updated ? Date.parse(p.updated) : null };
+    segs[String(p.id)] = { c: p.condition || null, r: p.road || '', l: p.location || '', a: p.area || '', u: p.updated ? Date.parse(p.updated) : null,
+      sec: Array.isArray(p.secondary) ? p.secondary.join('; ') : (p.secondary || ''), vis: p.visibility || '' };
     const g = f.geometry || {};
     if (g.type === 'LineString') lines.push(g.coordinates); else if (g.type === 'MultiLineString') lines.push(...g.coordinates);
   }
@@ -255,8 +259,58 @@ async function runCheck(env, opts = {}) {
     open_event: ev ? ev.id : null, opened: opened ? ev.id : null, closed: closed ? closed.id : null,
     emcon_in_box: plows ? plows.length : null, trucks_scope: 'emcon', segments_in_box: segs ? Object.keys(segs).length : null };
   stmts.push(upsert(db, 'check', check, now));
+  if (segs) stmts.push(...roadLogStatements(db, segs, st.roadlog ? st.roadlog.v : null, now));
   if (stmts.length) await db.batch(stmts);
   return check;
+}
+/* v5.9 daily road log: every condition change and every 511 LastUpdated bump for CMA 517/518, all the time.
+   Compared against the stored latest state 'roadlog' ({ segId: [cond, updatedMs] }). A segment with no stored state gets one 'initial' row.
+   Rows go out in a single multi-row INSERT per check (cheap on CPU). */
+const dayOf = ms => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Edmonton', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms));
+function roadLogStatements(db, segs, prev, now) {
+  const rows = [], cur = {}, day = dayOf(now);
+  for (const [id, s] of Object.entries(segs)) {
+    cur[id] = [s.c, s.u];
+    const p = prev ? prev[id] : undefined;
+    let kind = null, from = null;
+    if (!p) kind = 'initial';
+    else if (p[0] !== s.c) { kind = 'change'; from = p[0]; }
+    else if (s.u && p[1] !== s.u) { kind = 'update'; from = p[0]; }
+    if (kind) rows.push([day, now, kind, id, s.a, s.r, s.l, from, s.c, s.sec || null, s.vis || null, s.u]);
+  }
+  const out = [];
+  for (let i = 0; i < rows.length; i += 8) {   // D1 caps bound parameters per statement (100): 8 rows x 12
+    const chunk = rows.slice(i, i + 8);
+    out.push(db.prepare('INSERT INTO road_log (day, t, kind, seg_id, area, road, location, from_cond, to_cond, secondary, visibility, seg_updated) VALUES ' +
+      chunk.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ')).bind(...chunk.flat()));
+  }
+  if (rows.length || !prev) out.push(upsert(db, 'roadlog', cur, now));
+  return out;
+}
+async function roadLogDays(env, cors) {
+  const r = (await env.DB.prepare("SELECT day, SUM(kind = 'change') AS changes, SUM(kind = 'update') AS updates, SUM(kind = 'initial') AS initial, MIN(t) AS first_t, MAX(t) AS last_t FROM road_log GROUP BY day ORDER BY day DESC").all()).results;
+  return json({ days: r, coverage: 'CMA 517 and CMA 518', today: dayOf(Date.now()) }, 200, cors);
+}
+async function roadLogDay(env, day) {
+  const rows = (await env.DB.prepare('SELECT t, kind, seg_id, area, road, location, from_cond, to_cond, secondary, visibility, seg_updated FROM road_log WHERE day = ? ORDER BY t, area, road, seg_id').bind(day).all()).results;
+  const st = await env.DB.prepare("SELECT v, t FROM state WHERE k = 'roadlog'").first();
+  // latest state of every segment as of now, with names from the newest row we hold for it
+  const names = {};
+  (await env.DB.prepare('SELECT seg_id, area, road, location FROM road_log WHERE id IN (SELECT MAX(id) FROM road_log GROUP BY seg_id)').all()).results.forEach(r => { names[r.seg_id] = r; });
+  const latest = st ? Object.entries(JSON.parse(st.v)).map(([id, [c, u]]) => ({ seg_id: id, cond: c, seg_updated: u, ...(names[id] ? { area: names[id].area, road: names[id].road, location: names[id].location } : {}) })) : [];
+  return { day, rows, latest, latest_t: st ? st.t : null, coverage: 'CMA 517 and CMA 518', generated: Date.now() };
+}
+async function roadLogCsv(env, day, cors) {
+  const d = await roadLogDay(env, day);
+  const L = [], row = a => L.push(a.map(csvCell).join(','));
+  row(['# 511 Alberta road condition log, ' + day + ' (America/Edmonton)']);
+  row(['# Report generated', mt(d.generated)]);
+  row(['# Coverage: CMA 517 and CMA 518']);
+  row(['# kind: initial = baseline state when logging started; change = condition changed; update = 511 updated the segment, condition unchanged']);
+  row(['observed_mdt', 'observed_utc', 'kind', 'area', 'road', 'location', 'segment_id', 'from_condition', 'to_condition', 'secondary', 'visibility', 'segment_511_updated_mdt']);
+  for (const r of d.rows) row([mt(r.t), new Date(r.t).toISOString(), r.kind, r.area, r.road, r.location, r.seg_id, r.from_cond, r.to_cond, r.secondary, r.visibility, r.seg_updated ? mt(r.seg_updated) : '']);
+  return new Response(L.join('\n') + '\n', { headers: { 'Content-Type': 'text/csv; charset=utf-8',
+    'Content-Disposition': `attachment; filename="road-log-${day}.csv"`, 'Cache-Control': 'no-store', ...cors } });
 }
 function upsert(db, k, v, t) {
   return db.prepare('INSERT INTO state (k, v, t) VALUES (?, ?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v, t = excluded.t').bind(k, JSON.stringify(v), t);

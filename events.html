@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#05080f" />
 <link rel="icon" href="data:," /><!-- no favicon: stops Chrome requesting /favicon.ico (404 console error) -->
-<title>Central Alberta Snow Events · v5.8.4</title>
+<title>Central Alberta Snow Events · v5.9</title>
 <script>document.documentElement.className += ' js';</script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -196,6 +196,13 @@
   table.t td.n { text-align: right; }
   table.t .why { display: block; font-size: 0.6rem; color: var(--dim); }
   .scrollx { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.trk td:first-child, table.trk th:first-child { position: sticky; left: 0; background: #0b1622; white-space: nowrap; }
+  table.trk .tdot { display: inline-block; width: 7px; height: 7px; border-radius: 2px; margin-right: 4px; vertical-align: 1px; }
+  table.trk tr.idle td { color: var(--dim); }
+  table.trk.dense1 { font-size: 0.68rem; } table.trk.dense1 td { padding: 0.25rem 0.3rem; }
+  table.trk.dense2 { font-size: 0.64rem; } table.trk.dense2 td { padding: 0.18rem 0.28rem; } table.trk.dense2 .why { font-size: 0.56rem; }
+  table.trk.dense3 { font-size: 0.6rem; } table.trk.dense3 td { padding: 0.12rem 0.25rem; } table.trk.dense3 .why { font-size: 0.52rem; }
+  .tchips.dense1 { gap: 0.25rem 0.6rem; font-size: 0.62rem; } .tchips.dense2 { gap: 0.2rem 0.5rem; font-size: 0.6rem; } .tchips.dense3 { gap: 0.15rem 0.4rem; font-size: 0.56rem; }
   details.more { margin-top: 0.6rem; }
   details.more summary { cursor: pointer; min-height: 40px; display: flex; align-items: center; font: 600 0.7rem/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
   .actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 0.8rem 0 0; }
@@ -234,13 +241,14 @@
   <div class="brand">
     <div class="scope" aria-hidden="true"></div>
     <div>
-      <div class="title-row"><h1><span class="h1-long">Central Alberta </span>Snow Events</h1><span class="ver" title="Version 5.8.2">v5.8.4</span></div>
+      <div class="title-row"><h1><span class="h1-long">Central Alberta </span>Snow Events</h1><span class="ver" title="Version 5.9">v5.9</span></div>
       <p class="sub">Weather · 511 roads · plow deployments</p>
     </div>
   </div>
+  <div style="display:flex;gap:.4rem;flex:0 0 auto"><a class="back" href="roadlog.html" title="Daily log of 511 road condition updates, CMA 517 and CMA 518">Road log</a>
   <a class="back" href="./">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>Radar
-  </a>
+  </a></div>
 </header>
 </div>
 <main>
@@ -260,7 +268,7 @@
     stopped reporting, or left the feed; times are accurate to about 5 minutes.
     Data: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0) ·
     <a href="https://511.alberta.ca/" target="_blank" rel="noopener">511 Alberta</a>. Demo only. ·
-    <a href="./">Back to the snow radar</a> · v5.8.4
+    <a href="./">Back to the snow radar</a> · v5.9
   </p>
 </main>
 <script>
@@ -403,12 +411,12 @@ async function showList(quiet) {
 }
 
 /* ---------- charts (plain SVG) ---------- */
-function lineChart({ series, bars, yLabel, y2Label, t0, t1, height = 170, step = false }) {
+function lineChart({ series, bars, yLabel, y2Label, t0, t1, height = 170, step = false, yTop = 0 }) {
   const W = 640, H = height, L = 36, R = bars ? 34 : 10, T = 10, B = 22;
   const all = series.flatMap(s => s.points.filter(p => p[1] != null).map(p => p[1]));
   let ymin = Math.min(0, ...all), ymax = Math.max(1, ...all);
   if (all.length && Math.min(...all) < 0) ymin = Math.floor(Math.min(...all));
-  if (step) ymax = Math.max(4, Math.ceil(ymax / 4) * 4);   // whole-truck gridlines
+  if (step) ymax = Math.max(4, Math.ceil(Math.max(ymax, yTop) / 4) * 4);   // whole-truck gridlines; axis grows with the trucks seen (no cap)
   const span = Math.max(1, t1 - t0);
   const x = t => L + (W - L - R) * (t - t0) / span;
   const y = v => T + (H - T - B) * (1 - (v - ymin) / ((ymax - ymin) || 1));
@@ -439,6 +447,25 @@ function lineChart({ series, bars, yLabel, y2Label, t0, t1, height = 170, step =
   const leg = series.map(s => `<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join('') +
     (bars ? `<span><i class="bar" style="background:${bars.color};opacity:.6"></i>${esc(bars.name)} (right axis)</span>` : '');
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(yLabel)}">${g}</svg><div class="legend">${leg}<span>${esc(yLabel)}</span></div>`;
+}
+
+/* v5.9: one lane per Emcon truck (all of them, no top-N), deployment bars on the event's time axis; lanes and chips shrink as trucks are added */
+const densCls = n => n > 14 ? 'dense3' : n > 8 ? 'dense2' : n > 4 ? 'dense1' : '';
+function truckColor(id) { let h = 0; for (const c of String(id)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return `hsl(${20 + (h % 50)}, 95%, ${52 + (h >> 8) % 18}%)`; }
+function truckLanes(list, t0, t1) {
+  if (!list.length) return '';
+  const n = list.length, W = 640, L = 78, R = 10, lane = Math.max(12, Math.min(20, 28 - n)), gap = Math.max(2, Math.round(lane / 4)), T = 4;
+  const H = T + n * (lane + gap) + 18, span = Math.max(1, t1 - t0), x = t => L + (W - L - R) * (Math.min(Math.max(t, t0), t1) - t0) / span;
+  const fs = Math.max(10, Math.min(11, lane * 0.7));
+  let g = '';
+  list.forEach((t, i) => {
+    const y0 = T + i * (lane + gap);
+    g += `<text x="${L - 6}" y="${y0 + lane * 0.72}" text-anchor="end" style="font-size:${fs}px">#${esc(t.tid)}</text><rect x="${L}" y="${y0}" width="${W - L - R}" height="${lane}" fill="rgba(127,147,173,0.07)" rx="2"/>`;
+    for (const dp of t.deps || []) { const a = x(dp.out), b = x(dp.back || t1); g += `<rect x="${a}" y="${y0}" width="${Math.max(2, b - a)}" height="${lane}" fill="${truckColor(t.tid)}" opacity="0.85" rx="2"><title>#${esc(t.tid)} out ${esc(fmtT(dp.out))} → ${dp.back ? esc(fmtT(dp.back)) : 'still out'}</title></rect>`; }
+  });
+  for (let k = 0; k <= 4; k++) { const t = t0 + span * k / 4; g += `<text x="${x(t)}" y="${H - 5}" text-anchor="${k === 0 ? 'start' : k === 4 ? 'end' : 'middle'}">${esc(fmtT(t))}</text>`; }
+  const chips = list.map(t => { const h = (t.deps || []).reduce((s2, dp) => s2 + ((dp.back || t1) - dp.out), 0) / 3600000; return `<span><i class="bar" style="background:${truckColor(t.tid)}"></i>#${esc(t.tid)} ${n1(h)} h</span>`; }).join('');
+  return `<svg class="chart lanes" viewBox="0 0 ${W} ${H}" role="img" aria-label="Emcon trucks out, one lane per truck" style="margin-top:6px">${g}</svg><div class="legend tchips ${densCls(n)}">${chips}<span>${n} Emcon trucks · out time per truck</span></div>`;
 }
 
 /* ---------- detail ---------- */
@@ -504,10 +531,13 @@ function eventParts(d) {
   // trucks
   const trucks = Object.entries(d.trucks || {}).map(([tid, tr]) => ({ tid, ...tr }));
   const deps = g => trucks.filter(t => t.g === g && t.deps && t.deps.length);
-  const truckTable = list => list.length ? `<div class="scrollx"><table class="t"><thead><tr><th>Truck</th><th>Out</th><th>Back</th><th class="n">Hours</th></tr></thead><tbody>` +
-    list.flatMap(t => t.deps.map(dp => `<tr><td>#${esc(t.tid)}<span class="why">${esc(t.owner || '')}</span></td><td>${esc(fmtT(dp.out))}<span class="why">${esc(dp.why || '')}</span></td>
-      <td>${dp.back ? esc(fmtT(dp.back)) : 'still out'}<span class="why">${esc(dp.end || '')}</span></td><td class="n">${n1(((dp.back || t1) - dp.out) / 3600000)}</td></tr>`)).join('') + '</tbody></table></div>'
-    : '<p class="muted" style="margin:0;font:500 .74rem/1.5 var(--mono)">No deployments detected.</p>';
+  /* v5.9: every Emcon truck seen is listed (no cap); the table gets denser as the count grows, first column sticks if it ever scrolls */
+  const truckTable = list => list.length ? `<div class="scrollx"><table class="t trk ${densCls(list.length)}"><thead><tr><th>Truck</th><th>Out</th><th>Back</th><th class="n">Hours</th></tr></thead><tbody>` +
+    list.flatMap(t => (t.deps && t.deps.length ? t.deps : [null]).map(dp => dp ? `<tr><td><i class="tdot" style="background:${truckColor(t.tid)}"></i>#${esc(t.tid)}</td><td>${esc(fmtT(dp.out))}<span class="why">${esc(dp.why || '')}</span></td>
+      <td>${dp.back ? esc(fmtT(dp.back)) : 'still out'}<span class="why">${esc(dp.end || '')}</span></td><td class="n">${n1(((dp.back || t1) - dp.out) / 3600000)}</td></tr>`
+      : `<tr class="idle"><td><i class="tdot" style="background:${truckColor(t.tid)}"></i>#${esc(t.tid)}</td><td colspan="2">seen, not deployed</td><td class="n">0.0</td></tr>`)).join('') + '</tbody></table></div>'
+    : '<p class="muted" style="margin:0;font:500 .74rem/1.5 var(--mono)">No Emcon trucks seen.</p>';
+  const allEmcon = trucks.filter(t => t.g === 'emcon').sort((a, b) => ((a.deps && a.deps[0] ? a.deps[0].out : 9e15) - (b.deps && b.deps[0] ? b.deps[0].out : 9e15)) || String(a.tid).localeCompare(String(b.tid)));
   const seenBy = g => trucks.filter(t => t.g === g).length;
   const emconSeen = seenBy('emcon');
 
@@ -526,10 +556,10 @@ function eventParts(d) {
     ${tl.length ? `<div class="panel" style="margin-top:8px">${lineChart({ series: ser('acc', tl), yLabel: 'snowfall since start, cm (model hourly totals)', t0, t1 })}</div>
     <div class="panel" style="margin-top:8px">${lineChart({ series: ser('temp', tl), yLabel: 'temperature °C', t0, t1, height: 150 })}</div>` : ''}`; }).join('')}
     <h2 class="h2">Emcon trucks out vs snowfall <span class="sub">${esc(emconSeen + ' Emcon trucks seen in CMA 517/518')}</span></h2>
-    <div class="panel">${lineChart({ series: outSeries, bars: rateBars, yLabel: 'trucks out', t0, t1, step: true })}
+    <div class="panel">${lineChart({ series: outSeries, bars: rateBars, yLabel: 'trucks out', t0, t1, step: true, yTop: emconSeen })}${truckLanes(allEmcon, t0, t1)}
       <p class="chart-note">Snapshot every 5 min. Bars: Open-Meteo 15-min snowfall ×4 (cm/h), mean of the towns recorded (CMA 517 + CMA 518).</p></div>
     <h2 class="h2">Emcon trucks <span class="sub">${esc(emconSeen + ' seen · ' + deps('emcon').length + ' deployed')}</span></h2>
-    <div class="panel">${truckTable(deps('emcon'))}<p class="chart-note">Emcon only (other contractors not recorded).</p></div>
+    <div class="panel">${truckTable(allEmcon)}<p class="chart-note">Emcon only (other contractors not recorded).</p></div>
     <h2 class="h2">Road conditions · CMA 517 <span class="sub">${esc(cmaCount + ' CMA 517 segments tracked')}</span></h2>
     <p class="areas">${esc(Object.entries(areaCounts).map(([a, n]) => a + ': ' + n).join(' · '))}</p>
     <div class="segs">${segHtml}</div>
