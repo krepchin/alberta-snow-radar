@@ -284,7 +284,7 @@ function roadLogStatements(db, segs, prev, now) {
     out.push(db.prepare('INSERT INTO road_log (day, t, kind, seg_id, area, road, location, from_cond, to_cond, secondary, visibility, seg_updated) VALUES ' +
       chunk.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ')).bind(...chunk.flat()));
   }
-  if (rows.length || !prev) out.push(upsert(db, 'roadlog', cur, now));
+  out.push(upsert(db, 'roadlog', cur, now));   // every check, so 'as of' on the page is the latest 5-minute check
   return out;
 }
 async function roadLogDays(env, cors) {
