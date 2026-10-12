@@ -617,6 +617,13 @@
   }
 
   /* ---------- Reduced motion ---------- */
+  /* v5.10 phones only: taller map + one-line attribution (tap to expand full credits) */
+  @media (max-width: 600px) {
+    #radarMap { min-height: max(380px, 74vh) !important; min-height: max(380px, 74svh) !important; }
+    .leaflet-control-attribution { font-size: 8.5px !important; line-height: 1.3 !important; max-width: calc(100vw - 96px);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 1px 5px !important; cursor: pointer; }
+    .leaflet-control-attribution.attr-open { white-space: normal; max-width: calc(100vw - 16px); }
+  }
   @media (prefers-reduced-motion: reduce) {
     .sonar-ring, .scope-ring { display: none !important; }
     *, *::before, *::after {
@@ -2119,5 +2126,10 @@ boot().catch(e => { console.error(e); setStatus('Startup failed: ' + errText(e),
 </script>
 <script>/* main page visit count: one POST, no cookies; skipped with Do Not Track */
 (function(){try{if(navigator.doNotTrack==='1'||window.doNotTrack==='1'||navigator.globalPrivacyControl)return;fetch('https://alberta-snow-events.krepchin.workers.dev/hit',{method:'POST',mode:'cors',credentials:'omit',keepalive:true}).catch(function(){});}catch(e){}})();</script>
+<script>
+/* phones: tap the one-line map credits to expand / collapse them */
+document.addEventListener('click',function(e){var a=e.target.closest&&e.target.closest('.leaflet-control-attribution');
+  if(!a||e.target.closest('a'))return;a.classList.toggle('attr-open');});
+</script>
 </body>
 </html>
