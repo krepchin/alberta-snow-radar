@@ -48,3 +48,8 @@ CREATE TABLE IF NOT EXISTS road_log (
   seg_updated INTEGER                  -- 511 LastUpdated (ms)
 );
 CREATE INDEX IF NOT EXISTS idx_rl_day ON road_log (day, t);
+
+-- Oct 12 2026: login wall (also created on demand by the worker)
+CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE COLLATE NOCASE, grp TEXT NOT NULL CHECK (grp IN ('gov','emcon')), salt TEXT NOT NULL, hash TEXT NOT NULL, iter INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'active', created INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS access_requests (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, contact TEXT NOT NULL, grp TEXT NOT NULL, note TEXT, status TEXT NOT NULL DEFAULT 'pending', ip TEXT, created INTEGER NOT NULL, decided INTEGER);
+CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id INTEGER NOT NULL, expires INTEGER NOT NULL, created INTEGER NOT NULL);

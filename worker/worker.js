@@ -38,7 +38,7 @@ const ROADS_TTL = 180;            // s
 const ROADS_TIMEOUT = 15000;
 const ROADS_KEY = 'https://alberta-plow-relay.cache/roads/v1';
 const SIMPLIFY_DEG = 0.0002;      // Douglas-Peucker tolerance, ~15-22 m (same as scripts/fetch_511.py)
-const ALLOWED_ORIGINS = [/^https:\/\/krepchin\.github\.io$/, /^http:\/\/localhost(:\d+)?$/, /^http:\/\/127\.0\.0\.1(:\d+)?$/];
+const ALLOWED_ORIGINS = [/^https:\/\/krepchin\.github\.io$/, /^https?:\/\/(www\.)?albertaweatherradar\.(ca|com)$/, /^http:\/\/localhost(:\d+)?$/, /^http:\/\/127\.0\.0\.1(:\d+)?$/];
 
 let memTips = null;               // { id: { owner, type, updated, updated_text, t } } — per isolate
 

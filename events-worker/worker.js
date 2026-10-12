@@ -36,7 +36,7 @@ const STATIONARY_MS = 30 * MIN;// out truck stationary this long = back
 const CLOSE_EMCON_MS = 60 * MIN;
 const CLOSE_SNOW_MS = 120 * MIN;
 const TEST_MAX_MS = 3 * 60 * MIN;  // legacy: a (pre-existing) TEST event left open is closed after 3 h
-const ALLOWED_ORIGINS = [/^https:\/\/krepchin\.github\.io$/, /^http:\/\/localhost(:\d+)?$/, /^http:\/\/127\.0\.0\.1(:\d+)?$/];
+const ALLOWED_ORIGINS = [/^https:\/\/krepchin\.github\.io$/, /^https?:\/\/(www\.)?albertaweatherradar\.(ca|com)$/, /^http:\/\/localhost(:\d+)?$/, /^http:\/\/127\.0\.0\.1(:\d+)?$/];
 
 const isWinter = c => !!c && !/^(bare|no report|closed)/i.test(String(c).trim());   // see README: Closed is excluded
 const group = o => /emcon|mcon/i.test(o || '') ? 'emcon' : 'other';   // only 'emcon' is ever kept
@@ -49,9 +49,10 @@ export default {
     const url = new URL(request.url);
     const cors = corsHeaders(request.headers.get('Origin') || '');
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...cors, 'Access-Control-Max-Age': '86400' } });
-    if (request.method !== 'GET') return json({ error: 'method not allowed' }, 405, cors);
     const p = url.pathname.replace(/\/+$/, '') || '/';
     try {
+      if (/^\/(auth|admin|cameras|gps)(\/|$)/.test(p)) return await authRoutes(request, env, p, cors);
+      if (request.method !== 'GET') return json({ error: 'method not allowed' }, 405, cors);
       if (p === '/') return new Response('alberta-snow-events: GET /events/config · /events/status · /events · /events/{id} · /events/{id}/csv · /roadlog/days · /roadlog/{YYYY-MM-DD} · /roadlog/{YYYY-MM-DD}/csv. Data: Open-Meteo, 511 Alberta.\n',
         { headers: { 'Content-Type': 'text/plain; charset=utf-8', ...cors } });
       if (p === '/events/config') return json({ enabled: true, trucks: 'emcon' }, 200, { ...cors, 'Cache-Control': 'public, max-age=60' });
@@ -74,7 +75,8 @@ function corsHeaders(origin) {
   const h = { 'Vary': 'Origin' };
   if (origin && ALLOWED_ORIGINS.some(re => re.test(origin))) {
     h['Access-Control-Allow-Origin'] = origin;
-    h['Access-Control-Allow-Methods'] = 'GET, OPTIONS';
+    h['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS';
+    h['Access-Control-Allow-Headers'] = 'Authorization, Content-Type';
   }
   return h;
 }
@@ -261,6 +263,7 @@ async function runCheck(env, opts = {}) {
   stmts.push(upsert(db, 'check', check, now));
   if (segs) stmts.push(...roadLogStatements(db, segs, st.roadlog ? st.roadlog.v : null, now));
   if (stmts.length) await db.batch(stmts);
+  if (plowsRaw) await gpsStep(env, plowsRaw, now).catch(e => console.log('gps step failed', safeMsg(e)));   // Oct 12 2026: GPS connectivity log
   return check;
 }
 /* v5.9 daily road log: every condition change and every 511 LastUpdated bump for CMA 517/518, all the time.
@@ -543,4 +546,283 @@ async function eventCsv(env, id, cors) {
   }
   return new Response(L.join('\r\n') + '\r\n', { headers: { 'Content-Type': 'text/csv; charset=utf-8',
     'Content-Disposition': `attachment; filename="snow-event-${id}${ev.is_test ? '-TEST' : ''}.csv"`, 'Cache-Control': 'no-store', ...cors } });
+}
+
+/* ---------------- login wall (Oct 12 2026) ----------------
+ * users / access_requests / sessions in D1. Passwords: PBKDF2-SHA256 (WebCrypto), per-user random salt.
+ * Admin endpoints need the Worker secret ADMIN_PASSWORD as a Bearer token; unset = 503 (never defaulted).
+ * Cameras: real 511 Alberta data only (tooltip readings + CCTV images), proxied for signed-in users.
+ * /events and /roadlog read endpoints stay public server-side (the Drive export script and outlook.html call them);
+ * the Events and Road log pages are gated in the browser instead. */
+const AUTH_SCHEMA = [
+  "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE COLLATE NOCASE, grp TEXT NOT NULL CHECK (grp IN ('gov','emcon')), salt TEXT NOT NULL, hash TEXT NOT NULL, iter INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'active', created INTEGER NOT NULL)",
+  "CREATE TABLE IF NOT EXISTS access_requests (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, contact TEXT NOT NULL, grp TEXT NOT NULL, note TEXT, status TEXT NOT NULL DEFAULT 'pending', ip TEXT, created INTEGER NOT NULL, decided INTEGER)",
+  "CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id INTEGER NOT NULL, expires INTEGER NOT NULL, created INTEGER NOT NULL)"
+];
+let authReady = false;
+async function ensureAuth(env) {
+  if (authReady) return;
+  await env.DB.batch(AUTH_SCHEMA.map(q => env.DB.prepare(q)));
+  authReady = true;
+}
+const PBKDF2_ITER = 100000;   // Workers' WebCrypto PBKDF2 maximum
+const SESSION_MS = 30 * 24 * 3600 * 1000;
+const GROUPS = ['gov', 'emcon'];
+const b64 = u8 => btoa(String.fromCharCode(...u8));
+const hex = u8 => [...u8].map(b => b.toString(16).padStart(2, '0')).join('');
+async function pbkdf2(password, saltB64, iter) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
+  const salt = Uint8Array.from(atob(saltB64), c => c.charCodeAt(0));
+  return b64(new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: iter }, key, 256)));
+}
+async function hashPw(password) {
+  const salt = b64(crypto.getRandomValues(new Uint8Array(16)));
+  return { salt, hash: await pbkdf2(password, salt, PBKDF2_ITER), iter: PBKDF2_ITER };
+}
+function safeEq(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const x = new TextEncoder().encode(a), y = new TextEncoder().encode(b);
+  let d = x.length ^ y.length;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) d |= (x[i] || 0) ^ (y[i] || 0);
+  return d === 0;
+}
+const cleanUser = u => (typeof u === 'string' ? u.trim() : '');
+const validUser = u => /^[A-Za-z0-9._@-]{3,64}$/.test(u);
+const validPw = p => typeof p === 'string' && p.length >= 8 && p.length <= 200;
+async function body(request) {
+  const t = await request.text();
+  if (t.length > 4000) throw new Error('body too large');
+  try { return JSON.parse(t || '{}'); } catch (e) { return {}; }
+}
+const bearer = r => { const m = /^Bearer\s+(.+)$/i.exec(r.headers.get('Authorization') || ''); return m ? m[1].trim() : ''; };
+async function sessionUser(request, env) {
+  const tok = bearer(request);
+  if (!/^[0-9a-f]{64}$/.test(tok)) return null;
+  const r = await env.DB.prepare("SELECT u.id, u.username, u.grp, s.expires FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ? AND s.expires > ? AND u.status = 'active'").bind(tok, Date.now()).first();
+  return r || null;
+}
+
+/* Real 511 Alberta camera sites (tooltip ids) and the CCTV image each card shows. Checked against 511.alberta.ca Oct 12 2026. */
+const CAMS = {
+  '517': [
+    { site: 98, img: 243, label: 'Morrin Corner (Hwy 9 near Morrin)' },
+    { site: 97, img: 240, label: 'Hwy 9: 10km west of Drumheller' }
+  ],
+  '518': [
+    { site: 99, img: 246, label: 'Hwy 9: near Craigmyle', paveSuspect: true },
+    { site: 39, img: 65, label: 'Hwy 36 & Twp Rd 392 near Alliance' },
+    { site: 314, img: 570, label: 'Youngstown (Hwy 9)' }
+  ],
+  '518x': [{ site: 101, img: 251, label: 'Hwy 9: near Oyen' }],
+  'hwy2': [
+    { site: 77, img: 184, label: 'Hwy 2: south of Airdrie (Balzac overpass)' },
+    { site: 78, img: 188, label: 'Hwy 2: near Carstairs (south of Hwy 581)', paveSuspect: true },
+    { site: 79, img: 189, label: 'Hwy 2: near Bowden (south of Hwy 587)' },
+    { site: 80, img: 192, label: 'Hwy 2: near Ponoka (Morningside overpass)' }
+  ]
+};
+const CAM_IMGS = new Set(Object.values(CAMS).flat().map(c => c.img));
+const unent = s => s.replace(/&amp;/g, '&').replace(/&#176;|&deg;/g, '°').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
+async function camInfo(c, district) {
+  const out = { site: c.site, img: c.img, label: c.label, district, name: null, dir: null, readings: {}, pave_suspect: !!c.paveSuspect, error: null };
+  try {
+    const res = await fetch('https://511.alberta.ca/tooltip/Cameras/' + c.site, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(8000), cf: { cacheTtl: 120, cacheEverything: true } });
+    if (!res.ok) throw new Error('511 HTTP ' + res.status);
+    const h = await res.text();
+    const nm = /CameraTooltipDescriptionColumn[\s\S]*?<strong>([\s\S]*?)<\/strong>/.exec(h);
+    out.name = nm ? unent(nm[1]) : null;
+    const im = new RegExp('data-lazy="/map/Cctv/' + c.img + '"[^>]*data-fs-desc="([^"]*)"').exec(h);
+    out.dir = im ? unent(im[1]) : null;
+    if (!new RegExp('/map/Cctv/' + c.img + '"').test(h)) out.error = 'image no longer listed by 511';
+    const want = { 'Air Temperature': 'air', 'Pavement Temperature': 'pavement', 'Wind Speed': 'wind', 'Wind Direction': 'wind_dir', 'Relative Humidity': 'humidity', 'Weather Updated': 'updated' };
+    const re = /<td[^>]*>\s*([^<]+?)\s*<\/td>\s*<td[^>]*>\s*([^<]*?)\s*<\/td>/g;
+    let m;
+    while ((m = re.exec(h))) { const k = want[unent(m[1])]; if (k && unent(m[2]) && !/^n\/?a$/i.test(unent(m[2]))) out.readings[k] = unent(m[2]); }
+  } catch (e) { out.error = safeMsg(e); }
+  return out;
+}
+
+async function authRoutes(request, env, p, cors) {
+  await ensureAuth(env);
+  const M = request.method, now = Date.now();
+  // ---- public auth ----
+  if (p === '/auth/login' && M === 'POST') {
+    const b = await body(request), u = cleanUser(b.username);
+    if (!GROUPS.includes(b.group) || !validUser(u) || typeof b.password !== 'string') return json({ error: 'wrong username or password' }, 401, cors);
+    const row = await env.DB.prepare("SELECT * FROM users WHERE username = ? AND status = 'active'").bind(u).first();
+    const ok = row && row.grp === b.group && safeEq(await pbkdf2(b.password, row.salt, row.iter), row.hash);
+    if (!row) await pbkdf2(b.password, b64(new Uint8Array(16)), PBKDF2_ITER);   // similar timing for unknown users
+    if (!ok) return json({ error: 'wrong username or password' }, 401, cors);
+    const token = hex(crypto.getRandomValues(new Uint8Array(32)));
+    await env.DB.batch([
+      env.DB.prepare('DELETE FROM sessions WHERE expires < ?').bind(now),
+      env.DB.prepare('INSERT INTO sessions (token, user_id, expires, created) VALUES (?, ?, ?, ?)').bind(token, row.id, now + SESSION_MS, now)
+    ]);
+    return json({ token, username: row.username, group: row.grp, expires: now + SESSION_MS }, 200, cors);
+  }
+  if (p === '/auth/logout' && M === 'POST') {
+    const tok = bearer(request);
+    if (tok) await env.DB.prepare('DELETE FROM sessions WHERE token = ?').bind(tok).run();
+    return json({ ok: true }, 200, cors);
+  }
+  if (p === '/auth/me' && M === 'GET') {
+    const s = await sessionUser(request, env);
+    return s ? json({ username: s.username, group: s.grp, expires: s.expires }, 200, cors) : json({ error: 'not signed in' }, 401, cors);
+  }
+  if (p === '/auth/request' && M === 'POST') {
+    const b = await body(request);
+    const name = String(b.name || '').trim(), contact = String(b.contact || '').trim(), note = String(b.note || '').trim();
+    if (!GROUPS.includes(b.group) || !name || !contact || name.length > 80 || contact.length > 120 || note.length > 500)
+      return json({ error: 'please fill in name, contact and group (name ≤ 80, contact ≤ 120, note ≤ 500 characters)' }, 400, cors);
+    const ip = request.headers.get('CF-Connecting-IP') || '';
+    const recent = await env.DB.prepare('SELECT COUNT(*) n FROM access_requests WHERE ip = ? AND created > ?').bind(ip, now - 3600000).first();
+    const pend = await env.DB.prepare("SELECT COUNT(*) n FROM access_requests WHERE status = 'pending'").first();
+    if (recent.n >= 3 || pend.n >= 200) return json({ error: 'too many requests, please try again later' }, 429, cors);
+    await env.DB.prepare('INSERT INTO access_requests (name, contact, grp, note, ip, created) VALUES (?, ?, ?, ?, ?, ?)').bind(name, contact, b.group, note || null, ip, now).run();
+    return json({ ok: true }, 200, cors);
+  }
+  // ---- cameras (session) ----
+  if (p.startsWith('/cameras')) {
+    if (M !== 'GET') return json({ error: 'method not allowed' }, 405, cors);
+    const s = await sessionUser(request, env);
+    if (!s) return json({ error: 'not signed in' }, 401, cors);
+    const im = /^\/cameras\/img\/(\d+)$/.exec(p);
+    if (im) {
+      const id = Number(im[1]);
+      if (!CAM_IMGS.has(id)) return json({ error: 'unknown camera image' }, 404, cors);
+      const r = await fetch('https://511.alberta.ca/map/Cctv/' + id, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(10000), cf: { cacheTtl: 60, cacheEverything: true } });
+      if (!r.ok) return json({ error: '511 image HTTP ' + r.status }, 502, cors);
+      return new Response(r.body, { headers: { 'Content-Type': r.headers.get('Content-Type') || 'image/jpeg', 'Cache-Control': 'private, max-age=60', ...cors } });
+    }
+    if (p === '/cameras') {
+      const d = new URL(request.url).searchParams.get('district') || '517';
+      const lists = d === 'all' ? { '517': CAMS['517'], '518': [...CAMS['518'], ...CAMS['518x']], 'hwy2': CAMS.hwy2 } : CAMS[d] && /^51[78]$/.test(d) ? { [d]: CAMS[d] } : null;
+      if (!lists) return json({ error: 'district must be 517, 518 or all' }, 400, cors);
+      const sections = {};
+      for (const [k, list] of Object.entries(lists)) sections[k] = await Promise.all(list.map(c => camInfo(c, k)));
+      return json({ generated: now, source: '511 Alberta (511.alberta.ca)', sections }, 200, cors);
+    }
+    return json({ error: 'not found' }, 404, cors);
+  }
+  // ---- GPS connectivity log (Emcon session) ----
+  if (p.startsWith('/gps')) {
+    if (M !== 'GET') return json({ error: 'method not allowed' }, 405, cors);
+    const s = await sessionUser(request, env);
+    if (!s) return json({ error: 'not signed in' }, 401, cors);
+    if (s.grp !== 'emcon') return json({ error: 'Emcon Services accounts only' }, 403, cors);
+    await ensureGps(env);
+    if (p === '/gps/days') {
+      const rows = (await env.DB.prepare('SELECT day, COUNT(*) n FROM gps_events GROUP BY day ORDER BY day DESC LIMIT 120').all()).results;
+      const since = await env.DB.prepare("SELECT t FROM state WHERE k = 'gps_since'").first();
+      return json({ days: rows, recording_since: since ? since.t : null }, 200, cors);
+    }
+    const dm = /^\/gps\/(\d{4}-\d{2}-\d{2})$/.exec(p);
+    if (dm) return json({ day: dm[1], events: (await env.DB.prepare('SELECT truck, owner, event, ts, lat, lon, feed_ts FROM gps_events WHERE day = ? ORDER BY ts DESC, id DESC').bind(dm[1]).all()).results }, 200, cors);
+    return json({ error: 'not found' }, 404, cors);
+  }
+  // ---- admin (Bearer ADMIN_PASSWORD) ----
+  if (p.startsWith('/admin')) {
+    if (!env.ADMIN_PASSWORD) return json({ error: 'admin password not set' }, 503, cors);
+    if (!safeEq(bearer(request), env.ADMIN_PASSWORD)) return json({ error: 'wrong admin password' }, 401, cors);
+    const b = M === 'POST' ? await body(request) : {};
+    const createUser = async (u, grp, pw) => {
+      u = cleanUser(u);
+      if (!validUser(u)) return 'username must be 3-64 letters, digits or . _ @ -';
+      if (!GROUPS.includes(grp)) return 'group must be gov or emcon';
+      if (!validPw(pw)) return 'password must be 8-200 characters';
+      if (await env.DB.prepare('SELECT 1 FROM users WHERE username = ?').bind(u).first()) return 'username already exists';
+      const h = await hashPw(pw);
+      await env.DB.prepare("INSERT INTO users (username, grp, salt, hash, iter, status, created) VALUES (?, ?, ?, ?, ?, 'active', ?)").bind(u, grp, h.salt, h.hash, h.iter, now).run();
+      return null;
+    };
+    if (p === '/admin/check' && M === 'GET') return json({ ok: true }, 200, cors);
+    if (p === '/admin/requests' && M === 'GET')
+      return json({ requests: (await env.DB.prepare("SELECT id, name, contact, grp AS 'group', note, status, created, decided FROM access_requests ORDER BY (status = 'pending') DESC, created DESC LIMIT 200").all()).results }, 200, cors);
+    if (p === '/admin/users' && M === 'GET')
+      return json({ users: (await env.DB.prepare("SELECT id, username, grp AS 'group', status, created FROM users ORDER BY status, username").all()).results }, 200, cors);
+    let m;
+    if ((m = /^\/admin\/requests\/(\d+)\/(approve|deny)$/.exec(p)) && M === 'POST') {
+      const r = await env.DB.prepare("SELECT * FROM access_requests WHERE id = ? AND status = 'pending'").bind(Number(m[1])).first();
+      if (!r) return json({ error: 'no pending request with that id' }, 404, cors);
+      if (m[2] === 'approve') {
+        const err = await createUser(b.username, b.group || r.grp, b.password);
+        if (err) return json({ error: err }, 400, cors);
+      }
+      await env.DB.prepare('UPDATE access_requests SET status = ?, decided = ? WHERE id = ?').bind(m[2] === 'approve' ? 'approved' : 'denied', now, r.id).run();
+      return json({ ok: true }, 200, cors);
+    }
+    if (p === '/admin/users' && M === 'POST') {
+      const err = await createUser(b.username, b.group, b.password);
+      return err ? json({ error: err }, 400, cors) : json({ ok: true }, 200, cors);
+    }
+    if ((m = /^\/admin\/users\/(\d+)\/(reset|revoke|restore|delete)$/.exec(p)) && M === 'POST') {
+      const id = Number(m[1]);
+      const u = await env.DB.prepare('SELECT id FROM users WHERE id = ?').bind(id).first();
+      if (!u) return json({ error: 'no such user' }, 404, cors);
+      if (m[2] === 'reset') {
+        if (!validPw(b.password)) return json({ error: 'password must be 8-200 characters' }, 400, cors);
+        const h = await hashPw(b.password);
+        await env.DB.batch([env.DB.prepare('UPDATE users SET salt = ?, hash = ?, iter = ? WHERE id = ?').bind(h.salt, h.hash, h.iter, id),
+          env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(id)]);
+      } else if (m[2] === 'delete') {
+        await env.DB.batch([env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(id), env.DB.prepare('DELETE FROM users WHERE id = ?').bind(id)]);
+      } else {
+        await env.DB.batch([env.DB.prepare('UPDATE users SET status = ? WHERE id = ?').bind(m[2] === 'revoke' ? 'revoked' : 'active', id),
+          env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(id)]);
+      }
+      return json({ ok: true }, 200, cors);
+    }
+    return json({ error: 'not found' }, 404, cors);
+  }
+  return json({ error: 'not found' }, 404, cors);
+}
+
+/* ---------------- GPS connectivity log (Oct 12 2026) ----------------
+ * Built from the same 511 plow feed (Emcon vehicles, via alberta-plow-relay /plows) the 5-minute check already reads. No backfill.
+ *   Started: a truck appears in the feed reporting (511 'updated' within 15 min), or moves again after a Stopped.
+ *   Stopped: still reporting, but its position has not changed (< 25 m) for 3 or more polls in a row.
+ *   Lost:    it drops out of the feed, or its 511 'updated' time is more than 15 min old.
+ * A poll where the feed itself fails records nothing. */
+const GPS_STALE_MS = 15 * MIN, GPS_SAME_KM = 0.025, GPS_SAME_POLLS = 3;
+let gpsReady = false;
+async function ensureGps(env) {
+  if (gpsReady) return;
+  await env.DB.batch([
+    env.DB.prepare('CREATE TABLE IF NOT EXISTS gps_events (id INTEGER PRIMARY KEY AUTOINCREMENT, truck TEXT NOT NULL, owner TEXT, event TEXT NOT NULL, ts INTEGER NOT NULL, lat REAL, lon REAL, feed_ts INTEGER, day TEXT NOT NULL)'),
+    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_gps_day ON gps_events (day, ts)')
+  ]);
+  gpsReady = true;
+}
+const DAY_FMT = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Edmonton', year: 'numeric', month: '2-digit', day: '2-digit' });
+async function gpsStep(env, plows, now) {
+  await ensureGps(env);
+  const db = env.DB;
+  const row = await db.prepare("SELECT v FROM state WHERE k = 'gps'").first();
+  const prev = row ? parse(row.v, {}) : {};
+  const next = {}, ev = [], day = DAY_FMT.format(new Date(now));
+  const add = (id, owner, event, lat, lon, fts) => ev.push(db.prepare('INSERT INTO gps_events (truck, owner, event, ts, lat, lon, feed_ts, day) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').bind(id, owner, event, now, lat, lon, fts, day));
+  const seen = new Set();
+  for (const v of plows) {
+    seen.add(v.id);
+    const p = prev[v.id];
+    const fresh = v.upd ? now - v.upd <= GPS_STALE_MS : true;   // no 511 timestamp: being in the feed counts as reporting
+    const n = { lat: v.lat, lon: v.lon, upd: v.upd, owner: v.owner, same: 0, st: p ? p.st : 'lost' };
+    if (!fresh) { if (p && p.st !== 'lost') add(v.id, v.owner, 'Lost', v.lat, v.lon, v.upd); n.st = 'lost'; }
+    else if (!p || p.st === 'lost') { add(v.id, v.owner, 'Started', v.lat, v.lon, v.upd); n.st = 'reporting'; }
+    else {
+      const same = distKm({ lat: p.lat, lon: p.lon }, v) < GPS_SAME_KM;
+      n.same = same ? (p.same || 0) + 1 : 0;
+      if (same && n.same >= GPS_SAME_POLLS && p.st === 'reporting') { add(v.id, v.owner, 'Stopped', v.lat, v.lon, v.upd); n.st = 'stopped'; }
+      else if (!same && p.st === 'stopped') { add(v.id, v.owner, 'Started', v.lat, v.lon, v.upd); n.st = 'reporting'; }
+    }
+    next[v.id] = n;
+  }
+  for (const [id, p] of Object.entries(prev)) {
+    if (seen.has(id)) continue;
+    if (p.st !== 'lost') add(id, p.owner, 'Lost', p.lat, p.lon, p.upd);
+    if (now - (p.upd || now) < 7 * 24 * 3600 * 1000) next[id] = { ...p, st: 'lost', same: 0 };
+  }
+  ev.push(upsert(db, 'gps', next, now));
+  if (!row) ev.push(upsert(db, 'gps_since', now, now));
+  await db.batch(ev);
 }
