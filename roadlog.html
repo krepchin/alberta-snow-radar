@@ -328,8 +328,6 @@ function rowHtml(r) {
 function section(cma, d) {
   const rows = d.rows.filter(r => cmaOf(r.area) === cma);
   const ch = rows.filter(r => r.kind === 'change'), up = rows.filter(r => r.kind === 'update'), ini = rows.filter(r => r.kind === 'initial');
-  // every 511 update (changes and same-condition updates), one chronological feed, newest first
-  const feed = rows.filter(r => r.kind !== 'initial').sort((a, b) => b.t - a.t || String(a.road).localeCompare(String(b.road)));
   const perArea = {}; ch.forEach(r => { const a = r.area.replace(/^CMA 51[78] - /, ''); perArea[a] = (perArea[a] || 0) + 1; });
   const latest = d.latest.filter(s => cmaOf(s.area) === cma);
   const nonBare = latest.filter(s => isWinter(s.cond));
@@ -339,9 +337,22 @@ function section(cma, d) {
     (isToday ? ` · <b>${nonBare.length}</b> of ${latest.length} segments not bare now${d.latest_t ? ' (as of ' + esc(fmtT(d.latest_t)) + ')' : ''}` : '') +
     ` · first change to snow covered: ${firstSnow ? esc(firstSnow.road + ' ' + firstSnow.location) + ' at ' + esc(fmtT(firstSnow.t)) : 'none'}</p>`;
   const names = cma === '517' ? 'Three Hills, Drumheller, Stettler' : 'Castor, Consort, Czar';
+  // one entry per segment (same layout as the events page's road rows), newest 511 LastUpdated first.
+  // Values are real: the segment's latest logged row for this day (baseline or later), and for today the recorder's latest state.
+  const segs = {};
+  rows.slice().sort((a, b) => a.t - b.t).forEach(r => { segs[r.seg_id] = { ...(segs[r.seg_id] || {}), id: r.seg_id, road: r.road, location: r.location, area: r.area, cond: r.to_cond, sec: r.secondary, upd: r.seg_updated }; });
+  if (isToday) latest.forEach(l => { const o = segs[l.seg_id] || { id: l.seg_id, road: l.road, location: l.location, area: l.area };
+    segs[l.seg_id] = { ...o, cond: l.cond, upd: l.seg_updated || o.upd, sec: l.cond === o.cond ? o.sec : null }; });
+  const list = Object.values(segs).sort((a, b) => (b.upd || 0) - (a.upd || 0) || String(a.road).localeCompare(String(b.road)));
+  const chipCls = c => isWinter(c) ? 'w' : /^bare/i.test(c || '') ? 'b' : '';
+  const card = g => {
+    const changes = ch.filter(r => r.seg_id === g.id);
+    return `<div class="seg${isWinter(g.cond) ? ' winter' : ''}"><div class="seg-hd"><span>${esc(g.road || '')}</span><span class="dur">${changes.length ? 'CHANGE' : ''}</span></div>
+      <div class="seg-loc">${esc(g.location || '')} · ${esc(g.area || '')}</div>
+      <div class="chips"><span class="chip ${chipCls(g.cond)}"><time>${g.upd ? esc(fmtDT(g.upd)) : '—'}</time>${esc(g.cond || '—')}<span class="upd">511 updated · secondary: ${g.sec ? esc(g.sec) : 'none'}</span></span>${changes.map(r => `<span class="chip ${chipCls(r.to_cond)}"><time>${esc(fmtT(r.t))}</time>${esc(r.from_cond || '—')} → ${esc(r.to_cond || '—')}<span class="upd">511 updated ${r.seg_updated ? esc(fmtDT(r.seg_updated)) : '—'}</span></span>`).join('')}</div></div>`;
+  };
   return `<h2 class="h2">CMA ${cma} <span class="sub">${names}</span></h2>${sum}
-    <div class="rows" style="margin-top:6px">${feed.length ? feed.map(rowHtml).join('') : '<p class="muted" style="margin:0;font:500 .74rem/1.5 var(--mono)">No 511 updates logged for CMA ' + cma + ' on this day yet.</p>'}</div>
-    ${ini.length ? `<details class="more" data-k="ini${cma}"><summary>${ini.length} segments · baseline when logging started (show)</summary><div class="rows">${ini.map(rowHtml).join('')}</div></details>` : ''}`;
+    <div class="segs" style="margin-top:6px">${list.length ? list.map(card).join('') : '<p class="muted" style="margin:0;font:500 .74rem/1.5 var(--mono)">No CMA ' + cma + ' segments logged for this day.</p>'}</div>`;
 }
 async function load(quiet) {
   if (!quiet) setStatus('loading', 'Loading road log…');
