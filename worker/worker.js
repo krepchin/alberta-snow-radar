@@ -51,10 +51,11 @@ export default {
     if (request.method !== 'GET' && request.method !== 'HEAD') return json({ error: 'method not allowed' }, 405, cors);
     if (url.pathname === '/' || url.pathname === '') {
       return new Response('alberta-plow-relay: GET /plows (511 Alberta snowplows, Central Alberta) · ' +
-        'GET /roads (511 Alberta winter road conditions, Central Alberta, GeoJSON). Data: 511 Alberta.\n',
+        'GET /roads (511 Alberta winter road conditions, Central Alberta, GeoJSON) · GET /roadevents (511 Alberta traffic events, Central Alberta). Data: 511 Alberta.\n',
         { headers: { 'Content-Type': 'text/plain; charset=utf-8', ...cors } });
     }
     if (url.pathname === '/roads') return handleRoads(env, ctx, cors);
+    if (url.pathname === '/roadevents') return handleRoadEvents(env, ctx, cors);
     if (url.pathname !== '/plows') return json({ error: 'not found' }, 404, cors);
 
     const cache = caches.default;
@@ -346,4 +347,41 @@ function decodeFlat(s, maxPts = Infinity) {
     f.push(lng, lat);
   }
   return f;
+}
+
+/* v6.3 /roadevents: 511 Alberta traffic events (closures, incidents, roadwork, ...) inside BOX (Central Alberta,
+ * CMA 517/518). Real 511 fields only; nothing synthesized. Cached 120 s. Key read from env, never echoed. */
+const EVENTS_API = 'https://511.alberta.ca/api/v2/get/event?format=json&lang=en&key=';
+const EVENTS_KEY = 'https://alberta-plow-relay.cache/roadevents/v2';
+const EVENTS_TTL = 120;
+// Covered towns only (Three Hills, Drumheller, Stettler, Castor, Consort, Czar area); excludes Calgary/Red Deer/QEII corridor.
+const EBOX = { lat0: 51.2, lat1: 52.7, lon0: -113.5, lon1: -109.95 };
+// Over-dimensional load movements (restrictionClass) are skipped: transient pilot-vehicle notices, not road events.
+const EVENTS_SKIP = new Set(['restrictionClass']);
+async function handleRoadEvents(env, ctx, cors) {
+  const cache = caches.default;
+  const hit = await cache.match(EVENTS_KEY).catch(() => null);
+  if (hit) return withHeaders(hit, { ...cors, 'X-Relay-Cache': 'HIT' });
+  const key = env && env.ALBERTA_511_API_KEY;
+  const fail = (msg) => json({ generated: null, source: '511 Alberta', error: msg, events: [] }, 502, { ...cors, 'Cache-Control': 'no-store' });
+  if (!key) return fail('road events not configured (missing API key)');
+  let rows;
+  try {
+    rows = JSON.parse(await getText(EVENTS_API + encodeURIComponent(key), ROADS_TIMEOUT));
+    if (!Array.isArray(rows)) throw new Error('unexpected response shape');
+  } catch (e) {
+    const msg = String(e && e.message || e).split(key).join('***').replace(/https?:\/\/\S+/g, '[url]').slice(0, 160);
+    return fail('511 road events unavailable: ' + msg);
+  }
+  const inBox = (la, lo) => typeof la === 'number' && typeof lo === 'number' && la >= EBOX.lat0 && la <= EBOX.lat1 && lo >= EBOX.lon0 && lo <= EBOX.lon1;
+  const events = rows.filter(r => !EVENTS_SKIP.has(r.EventType)).filter(r => inBox(r.Latitude, r.Longitude) || inBox(r.LatitudeSecondary, r.LongitudeSecondary)).map(r => ({
+    id: r.ID, type: r.EventType || null, subtype: r.EventSubType || null, road: r.RoadwayName || null,
+    direction: r.DirectionOfTravel || null, description: r.Description || null, full_closure: !!r.IsFullClosure,
+    severity: r.Severity || null, lanes: r.LanesAffected || null, lat: r.Latitude, lon: r.Longitude,
+    start: r.StartDate || null, planned_end: r.PlannedEndDate || null, updated: r.LastUpdated || null
+  })).sort((a, b) => (b.full_closure - a.full_closure) || ((b.updated || 0) - (a.updated || 0)));
+  const body = { generated: new Date().toISOString(), source: '511 Alberta (511.alberta.ca)', bbox: [EBOX.lat0, EBOX.lon0, EBOX.lat1, EBOX.lon1], count: events.length, events };
+  const res = json(body, 200, { 'Cache-Control': `public, max-age=${EVENTS_TTL}` });
+  ctx.waitUntil(cache.put(EVENTS_KEY, res.clone()).catch(() => {}));
+  return withHeaders(res, { ...cors, 'X-Relay-Cache': 'MISS' });
 }
