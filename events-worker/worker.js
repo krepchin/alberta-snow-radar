@@ -793,6 +793,18 @@ async function authRoutes(request, env, p, cors) {
       const err = await createUser(b.username, b.group, b.password);
       return err ? json({ error: err }, 400, cors) : json({ ok: true }, 200, cors);
     }
+    if ((m = /^\/admin\/users\/([^/]+)\/group$/.exec(p)) && M === 'POST') {
+      const key = decodeURIComponent(m[1]);
+      const u = await env.DB.prepare(/^\d+$/.test(key) ? 'SELECT id, grp FROM users WHERE id = ?' : 'SELECT id, grp FROM users WHERE username = ?').bind(/^\d+$/.test(key) ? Number(key) : key).first();
+      if (!u) return json({ error: 'no such user' }, 404, cors);
+      const g = b.group;
+      if (!['gov', 'emcon', 'both'].includes(g)) return json({ error: "group must be 'gov', 'emcon' or 'both'" }, 400, cors);
+      // 'both' keeps grp (CHECK constraint) and sets both_sides; gov/emcon set grp and clear both_sides. Sessions are dropped so the new type applies at next sign-in.
+      const upd = g === 'both' ? env.DB.prepare('UPDATE users SET both_sides = 1 WHERE id = ?').bind(u.id)
+        : env.DB.prepare('UPDATE users SET grp = ?, both_sides = 0 WHERE id = ?').bind(g, u.id);
+      await env.DB.batch([upd, env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(u.id)]);
+      return json({ ok: true, group: g }, 200, cors);
+    }
     if ((m = /^\/admin\/users\/(\d+)\/(reset|revoke|restore|delete)$/.exec(p)) && M === 'POST') {
       const id = Number(m[1]);
       const u = await env.DB.prepare('SELECT id FROM users WHERE id = ?').bind(id).first();

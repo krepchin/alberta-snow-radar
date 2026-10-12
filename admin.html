@@ -150,6 +150,7 @@
   .empty{margin:.2rem 0;font:500 .72rem/1.45 var(--mono);color:var(--muted)}
   .row .ap{display:none;width:100%} .row.open .ap{display:block} .row .ap .field{margin:.5rem 0}
   .rv{opacity:.55}
+  .gp{display:flex;gap:6px;width:100%} .gp select{flex:2;min-width:0;min-height:42px;padding:0 .6rem;border-radius:10px;border:1px solid var(--line-strong);background:rgba(3,10,18,.7);color:var(--text);font:500 .9rem var(--font)} .gp .b{flex:1}
 </style>
 <script src="auth.js"></script>
 </head>
@@ -211,6 +212,7 @@
     }, function(e){ reqs.innerHTML='<p class="empty">'+esc(e.message)+'</p>'; });
     call('/admin/users').then(function(j){
       users.innerHTML=j.users.length?j.users.map(function(u){ return '<div class="row'+(u.status==='revoked'?' rv':'')+'" data-id="'+u.id+'"><div class="who"><b>'+esc(u.username)+'</b><span>'+(u.status==='revoked'?'Revoked':'Active')+' · added '+day(u.created)+'</span></div>'+tag(u.group)+
+        '<div class="gp"><select aria-label="Account type for '+esc(u.username)+'">'+['gov','emcon','both'].map(function(g){return '<option value="'+g+'"'+(g===u.group?' selected':'')+'>'+GN[g]+'</option>'}).join('')+'</select><button class="b" data-a="group">Save</button></div>'+
         '<div class="btns"><button class="b gh" data-a="reset">Reset password</button>'+(u.status==='revoked'?'<button class="b" data-a="restore">Restore</button>':'<button class="b no" data-a="revoke">Revoke</button>')+'</div></div>'; }).join(''):'<p class="empty">No accounts yet.</p>';
     }, function(e){ users.innerHTML='<p class="empty">'+esc(e.message)+'</p>'; });
     call('/admin/logins?days=30').then(function(j){ var L=j.logins, V=j.visits;
@@ -229,6 +231,7 @@
   users.onclick=function(e){ var b=e.target.closest('button'); if(!b) return; var id=b.closest('.row').dataset.id;
     if(b.dataset.a==='reset'){ var p=prompt('New password (at least 8 characters):'); if(!p) return; call('/admin/users/'+id+'/reset',{password:p}).then(function(){alert('Password changed. That user is signed out everywhere.');refresh()},function(x){alert(x.message)}); }
     else if(b.dataset.a==='revoke'){ if(confirm('Revoke this account? They are signed out right away.')) call('/admin/users/'+id+'/revoke',{}).then(refresh,function(x){alert(x.message)}); }
+    else if(b.dataset.a==='group'){ var sel=b.closest('.row').querySelector('select'); b.disabled=true; call('/admin/users/'+id+'/group',{group:sel.value}).then(function(){alert('Saved as '+GN[sel.value]+'. That user is signed out and gets the new access at next sign-in.');refresh()},function(x){b.disabled=false;alert(x.message)}); }
     else if(b.dataset.a==='restore'){ call('/admin/users/'+id+'/restore',{}).then(refresh,function(x){alert(x.message)}); }
   };
   var af=document.getElementById('addForm');
