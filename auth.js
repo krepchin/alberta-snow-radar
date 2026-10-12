@@ -32,4 +32,10 @@
       A.api('/auth/logout', { method: 'POST' }).then(done, done);
     }
   };
+  /* '‹ Home' links (a[data-home]) go to the signed-in group's landing page. */
+  function setHome(g) { var l = document.querySelectorAll('a[data-home]'); for (var i = 0; i < l.length; i++) l[i].href = A.landing(g); }
+  document.addEventListener('DOMContentLoaded', function () {
+    setHome(A.group());
+    if (A.token()) A.api('/auth/me').then(function (r) { return r.ok ? r.json() : null; }).then(function (m) { if (m && m.group) setHome(m.group); }, function () {});
+  });
 })();
