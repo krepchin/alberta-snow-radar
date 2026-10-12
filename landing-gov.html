@@ -167,7 +167,7 @@
   <div class="sec" style="margin-top:0"><span>Road cameras</span><div class="tog"><button class="on" data-d="517">CMA 517</button><button data-d="518">CMA 518</button></div></div>
   <div class="grid" id="g517"></div><div class="grid" id="g518" hidden></div>
   <p class="lead" id="camMsg" style="margin:.6rem 0 0;font-size:.8rem" hidden></p>
-  <div class="btnrow"><button class="bb" id="bEv">Events</button><button class="bb" id="bRl">Road log</button><button class="bb" id="bRg">Road Genie</button><button class="bb go2" id="bRf">Refresh cameras</button><button class="bb full" id="bAll">All cameras</button><button class="bb out full" id="bOut">Sign out</button></div>
+  <div class="btnrow"><button class="bb" id="bEv">Events</button><button class="bb" id="bRl">Road log</button><button class="bb" id="bRg">Road Genie</button><button class="bb go2" id="bRf">Refresh cameras</button><button class="bb full" id="bAll">All cameras</button><button class="bb full" id="bSw" style="display:none">Switch to Emcon ›</button><button class="bb out full" id="bOut">Sign out</button></div>
   <p class="foot">Real 511 Alberta camera images · albertaweatherradar.ca</p>
 </main>
 <script>
@@ -181,7 +181,7 @@ function loadImgs(root){ root.querySelectorAll('img[data-img]').forEach(function
 
 (function(){
   var A=ASRAuth;
-  A.require().then(function(m){ if(m.group&&m.group!=='gov'){ location.replace(A.landing(m.group)); return; } load('517'); });
+  A.require().then(function(m){ if(m.group&&m.group!=='gov'&&m.group!=='both'){ location.replace(A.landing(m.group)); return; } A.setSide('gov'); if(m.group==='both'){ var sw=document.getElementById('bSw'); sw.style.display=''; sw.onclick=function(){ A.setSide('emcon'); location.href='landing-emcon.html'; }; } load('517'); });
   var loaded={};
   function card(c){ return '<div class="cam"><img data-img="'+c.img+'" alt="'+esc(c.label)+'"><div class="i"><b>'+esc(c.label)+'</b><span class="rd">'+esc(roadTxt(c))+'</span><span>CMA '+c.district+' · time stamp on image</span></div></div>'; }
   function load(d,force){ if(loaded[d]&&!force) return; loaded[d]=1; var g=document.getElementById('g'+d), msg=document.getElementById('camMsg');

@@ -566,11 +566,15 @@ let authReady = false;
 async function ensureAuth(env) {
   if (authReady) return;
   await env.DB.batch(AUTH_SCHEMA.map(q => env.DB.prepare(q)));
+  // 'both' accounts: grp stays 'gov'/'emcon' (old CHECK constraint), both_sides = 1 lets them use either side.
+  try { await env.DB.prepare('ALTER TABLE users ADD COLUMN both_sides INTEGER NOT NULL DEFAULT 0').run(); } catch (e) { /* already there */ }
   authReady = true;
 }
 const PBKDF2_ITER = 100000;   // Workers' WebCrypto PBKDF2 maximum
 const SESSION_MS = 30 * 24 * 3600 * 1000;
 const GROUPS = ['gov', 'emcon'];
+const ACCT_GROUPS = ['gov', 'emcon', 'both'];
+const effGrp = row => (row.both_sides ? 'both' : row.grp);
 const b64 = u8 => btoa(String.fromCharCode(...u8));
 const hex = u8 => [...u8].map(b => b.toString(16).padStart(2, '0')).join('');
 async function pbkdf2(password, saltB64, iter) {
@@ -601,7 +605,7 @@ const bearer = r => { const m = /^Bearer\s+(.+)$/i.exec(r.headers.get('Authoriza
 async function sessionUser(request, env) {
   const tok = bearer(request);
   if (!/^[0-9a-f]{64}$/.test(tok)) return null;
-  const r = await env.DB.prepare("SELECT u.id, u.username, u.grp, s.expires FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ? AND s.expires > ? AND u.status = 'active'").bind(tok, Date.now()).first();
+  const r = await env.DB.prepare("SELECT u.id, u.username, u.grp, u.both_sides, s.expires FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ? AND s.expires > ? AND u.status = 'active'").bind(tok, Date.now()).first();
   return r || null;
 }
 
@@ -653,7 +657,7 @@ async function authRoutes(request, env, p, cors) {
     const b = await body(request), u = cleanUser(b.username);
     if (!GROUPS.includes(b.group) || !validUser(u) || typeof b.password !== 'string') return json({ error: 'wrong username or password' }, 401, cors);
     const row = await env.DB.prepare("SELECT * FROM users WHERE username = ? AND status = 'active'").bind(u).first();
-    const ok = row && row.grp === b.group && safeEq(await pbkdf2(b.password, row.salt, row.iter), row.hash);
+    const ok = row && (row.grp === b.group || row.both_sides) && safeEq(await pbkdf2(b.password, row.salt, row.iter), row.hash);
     if (!row) await pbkdf2(b.password, b64(new Uint8Array(16)), PBKDF2_ITER);   // similar timing for unknown users
     await logLogin(env, request, u || String(b.username || '').slice(0, 64), b.group, !!ok, now);
     if (!ok) return json({ error: 'wrong username or password' }, 401, cors);
@@ -662,7 +666,7 @@ async function authRoutes(request, env, p, cors) {
       env.DB.prepare('DELETE FROM sessions WHERE expires < ?').bind(now),
       env.DB.prepare('INSERT INTO sessions (token, user_id, expires, created) VALUES (?, ?, ?, ?)').bind(token, row.id, now + SESSION_MS, now)
     ]);
-    return json({ token, username: row.username, group: row.grp, expires: now + SESSION_MS }, 200, cors);
+    return json({ token, username: row.username, group: effGrp(row), expires: now + SESSION_MS }, 200, cors);
   }
   if (p === '/auth/logout' && M === 'POST') {
     const tok = bearer(request);
@@ -671,7 +675,7 @@ async function authRoutes(request, env, p, cors) {
   }
   if (p === '/auth/me' && M === 'GET') {
     const s = await sessionUser(request, env);
-    return s ? json({ username: s.username, group: s.grp, expires: s.expires }, 200, cors) : json({ error: 'not signed in' }, 401, cors);
+    return s ? json({ username: s.username, group: effGrp(s), expires: s.expires }, 200, cors) : json({ error: 'not signed in' }, 401, cors);
   }
   if (p === '/hit' && M === 'POST') return json(await countHit(env, request, now), 200, cors);
   if (p === '/auth/request' && M === 'POST') {
@@ -714,7 +718,7 @@ async function authRoutes(request, env, p, cors) {
     if (M !== 'GET') return json({ error: 'method not allowed' }, 405, cors);
     const s = await sessionUser(request, env);
     if (!s) return json({ error: 'not signed in' }, 401, cors);
-    if (s.grp !== 'emcon') return json({ error: 'Emcon Services accounts only' }, 403, cors);
+    if (s.grp !== 'emcon' && !s.both_sides) return json({ error: 'Emcon Services accounts only' }, 403, cors);
     await ensureGps(env);
     if (p === '/gps/days') {
       const rows = (await env.DB.prepare('SELECT day, COUNT(*) n FROM gps_events GROUP BY day ORDER BY day DESC LIMIT 120').all()).results;
@@ -733,11 +737,12 @@ async function authRoutes(request, env, p, cors) {
     const createUser = async (u, grp, pw) => {
       u = cleanUser(u);
       if (!validUser(u)) return 'username must be 3-64 letters, digits or . _ @ -';
-      if (!GROUPS.includes(grp)) return 'group must be gov or emcon';
+      if (!ACCT_GROUPS.includes(grp)) return 'group must be gov, emcon or both';
       if (!validPw(pw)) return 'password must be 8-200 characters';
       if (await env.DB.prepare('SELECT 1 FROM users WHERE username = ?').bind(u).first()) return 'username already exists';
       const h = await hashPw(pw);
-      await env.DB.prepare("INSERT INTO users (username, grp, salt, hash, iter, status, created) VALUES (?, ?, ?, ?, ?, 'active', ?)").bind(u, grp, h.salt, h.hash, h.iter, now).run();
+      await env.DB.prepare("INSERT INTO users (username, grp, salt, hash, iter, status, created) VALUES (?, ?, ?, ?, ?, 'active', ?)").bind(u, grp === 'both' ? 'gov' : grp, h.salt, h.hash, h.iter, now).run();
+      if (grp === 'both') await env.DB.prepare('UPDATE users SET both_sides = 1 WHERE username = ?').bind(u).run();
       return null;
     };
     if (p === '/admin/check' && M === 'GET') return json({ ok: true }, 200, cors);
@@ -757,7 +762,7 @@ async function authRoutes(request, env, p, cors) {
         events: list }, 200, cors);
     }
     if (p === '/admin/users' && M === 'GET')
-      return json({ users: (await env.DB.prepare("SELECT id, username, grp AS 'group', status, created FROM users ORDER BY status, username").all()).results }, 200, cors);
+      return json({ users: (await env.DB.prepare("SELECT id, username, CASE WHEN both_sides = 1 THEN 'both' ELSE grp END AS 'group', status, created FROM users ORDER BY status, username").all()).results }, 200, cors);
     let m;
     if ((m = /^\/admin\/requests\/(\d+)\/(approve|deny)$/.exec(p)) && M === 'POST') {
       const r = await env.DB.prepare("SELECT * FROM access_requests WHERE id = ? AND status = 'pending'").bind(Number(m[1])).first();

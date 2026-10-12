@@ -166,6 +166,7 @@
   <div class="brand"><div class="scope" aria-hidden="true"></div>
     <div><div class="title-row"><h1>Alberta Snow Radar</h1><span class="ver">v5.9</span></div><p class="sub">Weather · 511 roads · plow deployments</p></div></div>
   <div style="display:flex;gap:.4rem;flex:0 0 auto"><a class="back" data-home href="landing-gov.html" title="Back to your home page">‹ Home</a>
+  <a class="back" data-signout href="login.html">Sign out</a>
   <a class="back" href="./"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>Radar</a></div>
 </header></div>
 <main class="emc-page">
@@ -201,7 +202,7 @@
       days=j.days.map(function(x){return x.day}); var today=DF.format(new Date()); if(days.indexOf(today)<0) days.unshift(today);
       since.textContent=j.recording_since?LF.format(new Date(j.recording_since))+' MT':'with the next 5-minute check';
       show(cur&&days.indexOf(cur)>=0?cur:days[0]); }); }
-  A.require().then(function(m){ if(m.group&&m.group!=='emcon'){ location.replace(A.landing(m.group)); return; } load(); });
+  A.require().then(function(m){ if(m.group&&m.group!=='emcon'&&m.group!=='both'){ location.replace(A.landing(m.group)); return; } load(); });
   pv.onclick=function(){ var i=days.indexOf(cur); if(i<days.length-1) show(days[i+1]); };
   nx.onclick=function(){ var i=days.indexOf(cur); if(i>0) show(days[i-1]); };
   bRf.onclick=load; bBack.onclick=function(){ location.href='landing-emcon.html'; };

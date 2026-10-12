@@ -8,7 +8,10 @@
     group: function () { try { return localStorage.getItem(GKEY) || ''; } catch (e) { return ''; } },
     save: function (t, g) { try { localStorage.setItem(KEY, t); localStorage.setItem(GKEY, g); } catch (e) {} },
     clear: function () { try { localStorage.removeItem(KEY); localStorage.removeItem(GKEY); } catch (e) {} },
-    landing: function (g) { return g === 'emcon' ? 'landing-emcon.html' : 'landing-gov.html'; },
+    side: function () { try { return sessionStorage.getItem('asr_side') || ''; } catch (e) { return ''; } },
+    setSide: function (s) { try { sessionStorage.setItem('asr_side', s); } catch (e) {} },
+    /* 'both' accounts go back to the side they last used this session (default gov). */
+    landing: function (g) { if (g === 'both') g = A.side() === 'emcon' ? 'emcon' : 'gov'; return g === 'emcon' ? 'landing-emcon.html' : 'landing-gov.html'; },
     api: function (path, opt) {
       opt = opt || {}; var h = opt.headers || {};
       var t = A.token(); if (t && !h.Authorization) h.Authorization = 'Bearer ' + t;
@@ -36,6 +39,7 @@
   function setHome(g) { var l = document.querySelectorAll('a[data-home]'); for (var i = 0; i < l.length; i++) l[i].href = A.landing(g); }
   document.addEventListener('DOMContentLoaded', function () {
     setHome(A.group());
+    var so = document.querySelectorAll('[data-signout]'); for (var i = 0; i < so.length; i++) so[i].addEventListener('click', function (e) { e.preventDefault(); A.signOut(); });
     if (A.token()) A.api('/auth/me').then(function (r) { return r.ok ? r.json() : null; }).then(function (m) { if (m && m.group) setHome(m.group); }, function () {});
   });
 })();

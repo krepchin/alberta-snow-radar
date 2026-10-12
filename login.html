@@ -181,7 +181,7 @@
       b.disabled=true; msg.className='msg'; msg.textContent='Signing in…';
       A.api('/auth/login',{method:'POST',body:{group:f.dataset.g,username:f.u.value.trim(),password:f.p.value}})
         .then(function(r){return r.json().then(function(j){return [r.ok,j]})})
-        .then(function(x){ if(x[0]){ A.save(x[1].token,x[1].group); go(x[1].group); } else { msg.className='msg err'; msg.textContent=x[1].error||'Sign in failed'; b.disabled=false; } },
+        .then(function(x){ if(x[0]){ A.save(x[1].token,x[1].group); A.setSide(f.dataset.g); go(x[1].group); } else { msg.className='msg err'; msg.textContent=x[1].error||'Sign in failed'; b.disabled=false; } },
               function(){ msg.className='msg err'; msg.textContent='Could not reach the server. Try again.'; b.disabled=false; });
     };
   });

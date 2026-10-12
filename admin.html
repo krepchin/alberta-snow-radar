@@ -140,7 +140,7 @@
   .b.no{border-color:rgba(248,113,113,.55);background:rgba(248,113,113,.08);color:#fecaca}
   .b.gh{border-color:var(--line);background:rgba(3,7,14,.6);color:var(--muted)}
   .exm{display:inline-block;margin-left:.5rem;font:700 .56rem/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;padding:.3rem .42rem;border-radius:6px;color:#1f1405;background:var(--amber);vertical-align:middle}
-  .seg2{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:.8rem}
+  .seg2{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:.8rem}
   .seg2 label{min-height:46px;display:flex;align-items:center;justify-content:center;border-radius:10px;border:1px solid var(--line);font-weight:600;font-size:.85rem;text-align:center}
   .seg2 .on{border-color:rgba(20,224,192,.6);background:rgba(20,224,192,.1);box-shadow:0 0 14px rgba(20,224,192,.15)}
 
@@ -169,7 +169,7 @@
   <p class="lead">Approve or deny requests, add accounts, and manage access.</p>
   <section class="panel" style="margin-bottom:12px"><h3 class="st">Access requests</h3><div id="reqs"></div></section>
   <form class="panel" id="addForm" style="margin-bottom:12px"><h3 class="st">Add account</h3>
-    <span class="k">Group</span><div class="seg2"><label class="on"><input type="radio" name="g" value="gov" checked>Alberta Government</label><label><input type="radio" name="g" value="emcon">Emcon Services</label></div>
+    <span class="k">Group</span><div class="seg2"><label class="on"><input type="radio" name="g" value="gov" checked>Alberta Government</label><label><input type="radio" name="g" value="emcon">Emcon Services</label><label><input type="radio" name="g" value="both">Both</label></div>
     <div class="field"><label class="k" for="nu">Username</label><input id="nu" placeholder="Username" autocapitalize="none" autocorrect="off" autocomplete="off" required></div>
     <div class="field"><label class="k" for="np">Password</label><input id="np" type="password" placeholder="••••••••" autocomplete="new-password" required minlength="8"></div>
     <button class="go" type="submit">Create account</button><p class="msg" role="status"></p></form>
@@ -185,7 +185,7 @@
   function pw(){ try{return sessionStorage.getItem(K)||''}catch(e){return ''} }
   function call(path,body){ return fetch(A.API+path,{method:body?'POST':'GET',headers:Object.assign({Authorization:'Bearer '+pw()},body?{'Content-Type':'application/json'}:{}),body:body?JSON.stringify(body):undefined})
     .then(function(r){return r.json().catch(function(){return {}}).then(function(j){ if(!r.ok){ if(r.status===401){try{sessionStorage.removeItem(K)}catch(e){} } throw new Error(j.error||('HTTP '+r.status)); } return j; })}); }
-  var GN={gov:'Alberta Government',emcon:'Emcon Services'};
+  var GN={gov:'Alberta Government',emcon:'Emcon Services',both:'Both'};
   function tag(g){ return '<span class="g'+(g==='emcon'?' e':'')+'">'+GN[g]+'</span>'; }
   function day(t){ return new Date(t).toLocaleDateString('en-CA',{timeZone:'America/Edmonton',month:'short',day:'numeric',year:'numeric'}); }
   var f=document.getElementById('pwForm');
