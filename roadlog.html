@@ -308,6 +308,18 @@ const fmtDT = ms => new Date(ms).toLocaleString('en-CA', { month: 'short', day: 
 const dayOf = ms => new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms));
 const shiftDay = (d, n) => { const t = new Date(d + 'T12:00:00Z'); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
 const tzAbbr = () => { const p = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, timeZoneName: 'short' }).formatToParts(new Date()).find(x => x.type === 'timeZoneName'); return p ? p.value : ''; };
+function fmtDur(ms) {
+  if (ms == null || !isFinite(ms)) return '—';
+  const m = Math.round(ms / 60000);
+  if (Math.abs(m) < 60) return m + ' min';
+  return (m < 0 ? '-' : '') + Math.floor(Math.abs(m) / 60) + ' h ' + (Math.abs(m) % 60) + ' min';
+}
+/* "511 updated" line for a road condition entry (same as the events page); dashes where 511 gave no timestamp */
+function spanHtml(sp) {
+  if (!sp) return '';
+  const to = sp.cur ? 'now / report time' : (sp.to ? fmtDT(sp.to) : '—');
+  return `<span class="upd">511 updated ${sp.from ? esc(fmtDT(sp.from)) : '—'}</span><span class="upd">${sp.from ? esc(fmtDT(sp.from)) : '—'} → ${esc(to)} · ${sp.dur == null ? '—' : esc(fmtDur(sp.dur))}</span>`;
+}
 function setStatus(state, msg, retry) { $('status').dataset.state = state; $('statusMsg').textContent = msg; $('retryBtn').hidden = !retry; }
 async function getJson(path, ms = 12000) {
   const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), ms);
@@ -337,22 +349,27 @@ function section(cma, d) {
     (isToday ? ` · <b>${nonBare.length}</b> of ${latest.length} segments not bare now${d.latest_t ? ' (as of ' + esc(fmtT(d.latest_t)) + ')' : ''}` : '') +
     ` · first change to snow covered: ${firstSnow ? esc(firstSnow.road + ' ' + firstSnow.location) + ' at ' + esc(fmtT(firstSnow.t)) : 'none'}</p>`;
   const names = cma === '517' ? 'Three Hills, Drumheller, Stettler' : 'Castor, Consort, Czar';
-  // one entry per segment (same layout as the events page's road rows), newest 511 LastUpdated first.
-  // Values are real: the segment's latest logged row for this day (baseline or later), and for today the recorder's latest state.
-  const segs = {};
-  rows.slice().sort((a, b) => a.t - b.t).forEach(r => { segs[r.seg_id] = { ...(segs[r.seg_id] || {}), id: r.seg_id, road: r.road, location: r.location, area: r.area, cond: r.to_cond, sec: r.secondary, upd: r.seg_updated }; });
-  if (isToday) latest.forEach(l => { const o = segs[l.seg_id] || { id: l.seg_id, road: l.road, location: l.location, area: l.area };
-    segs[l.seg_id] = { ...o, cond: l.cond, upd: l.seg_updated || o.upd, sec: l.cond === o.cond ? o.sec : null }; });
-  const list = Object.values(segs).sort((a, b) => (b.upd || 0) - (a.upd || 0) || String(a.road).localeCompare(String(b.road)));
-  const chipCls = c => isWinter(c) ? 'w' : /^bare/i.test(c || '') ? 'b' : '';
-  const card = g => {
-    const changes = ch.filter(r => r.seg_id === g.id);
-    return `<div class="seg${isWinter(g.cond) ? ' winter' : ''}"><div class="seg-hd"><span>${esc(g.road || '')}</span><span class="dur">${changes.length ? 'CHANGE' : ''}</span></div>
-      <div class="seg-loc">${esc(g.location || '')} · ${esc(g.area || '')}</div>
-      <div class="chips"><span class="chip ${chipCls(g.cond)}"><time>${g.upd ? esc(fmtDT(g.upd)) : '—'}</time>${esc(g.cond || '—')}<span class="upd">511 updated · secondary: ${g.sec ? esc(g.sec) : 'none'}</span></span>${changes.map(r => `<span class="chip ${chipCls(r.to_cond)}"><time>${esc(fmtT(r.t))}</time>${esc(r.from_cond || '—')} → ${esc(r.to_cond || '—')}<span class="upd">511 updated ${r.seg_updated ? esc(fmtDT(r.seg_updated)) : '—'}</span></span>`).join('')}</div></div>`;
+  // v5.9.2: same markup as the events page's road sections: per-area counts, then one card per segment with a row of
+  // condition boxes (every 511 update logged that day), each with its 511 updated time and the from → to span. Newest 511 update first.
+  const reportT = Date.now();
+  const bySeg = {};
+  rows.forEach(r => { (bySeg[r.seg_id] = bySeg[r.seg_id] || []).push(r); });
+  const segRows = Object.values(bySeg).map(list => {
+    list.sort((a, b) => a.t - b.t);
+    list.forEach((r, k) => { const next = list[k + 1], from = r.seg_updated || null, cur = !next, to = cur ? reportT : (next.seg_updated || null);
+      r._sp = { from, to, cur, dur: from && to && to >= from ? to - from : null }; });
+    return { list, last: Math.max(...list.map(r => r.seg_updated || 0)), everWinter: list.some(r => isWinter(r.to_cond)) };
+  }).sort((a, b) => b.last - a.last || String(a.list[0].road).localeCompare(String(b.list[0].road)));
+  const areaCounts = {}; segRows.forEach(r => { const a = r.list[0].area.replace(/^CMA 51[78] - /, ''); areaCounts[a] = (areaCounts[a] || 0) + 1; });
+  const segCard = r => {
+    const f = r.list[0];
+    return `<div class="seg${r.everWinter ? ' winter' : ''}"><div class="seg-hd"><span>${esc(f.road)}</span><span class="dur"></span></div>
+      <div class="seg-loc">${esc(f.location)} · ${esc(f.area)}</div>
+      <div class="chips">${r.list.map(x => `<span class="chip ${isWinter(x.to_cond) ? 'w' : /^bare/i.test(x.to_cond || '') ? 'b' : ''}"><time>${esc(fmtT(x.t))}</time>${x.kind === 'initial' ? 'start: ' : ''}${esc(x.to_cond || '—')}${spanHtml(x._sp)}</span>`).join('')}</div></div>`;
   };
-  return `<h2 class="h2">CMA ${cma} <span class="sub">${names}</span></h2>${sum}
-    <div class="segs" style="margin-top:6px">${list.length ? list.map(card).join('') : '<p class="muted" style="margin:0;font:500 .74rem/1.5 var(--mono)">No CMA ' + cma + ' segments logged for this day.</p>'}</div>`;
+  return `<h2 class="h2">Road conditions · CMA ${cma} <span class="sub">${esc(segRows.length + ' CMA ' + cma + ' segments tracked')}</span></h2>
+    <p class="areas">${esc(Object.entries(areaCounts).map(([a, n]) => a + ': ' + n).join(' · '))}</p>${sum}
+    <div class="segs">${segRows.length ? segRows.map(segCard).join('') : '<p class="muted" style="margin:0;font:500 .74rem/1.5 var(--mono)">No CMA ' + cma + ' segments logged for this day.</p>'}</div>`;
 }
 async function load(quiet) {
   if (!quiet) setStatus('loading', 'Loading road log…');
