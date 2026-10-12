@@ -277,12 +277,8 @@
     <button type="button" class="retry" id="retryBtn" hidden>Retry</button>
   </div>
   <p class="muted" id="updLine" style="margin:.35rem 0 0;font:500 .7rem/1.5 var(--mono)" hidden><span id="updTxt"></span> · <button type="button" class="retry" id="refreshBtn" style="margin:0">Refresh</button></p>
-  <div class="daybar">
-    <a class="btnlink ghost" id="prevDay" href="#" aria-label="Previous day">‹ Prev</a>
-    <input type="date" id="dayPick" aria-label="Day" />
-    <a class="btnlink ghost" id="nextDay" href="#" aria-label="Next day">Next ›</a>
-    <a class="btnlink" id="csvBtn" href="#" download>Download CSV</a>
-  </div>
+  <p class="muted" style="margin:.5rem 0 0;font:500 .7rem/1.5 var(--mono)"><button type="button" class="retry" id="dayPrev" style="margin:0">‹ Prev</button> <span id="dayLbl"></span> <button type="button" class="retry" id="dayNext" style="margin:0">Next ›</button> <button type="button" class="retry" id="dayAll" style="margin:0">All</button></p>
+  <div class="actions"><a class="btnlink" id="csvBtn" href="#" download>Download CSV</a></div>
   <div id="view"></div>
   <p class="foot">
     A row is written when a 511 segment's condition changes (“change”), or when 511 updates the segment without changing it (“updated, no change”).
@@ -344,7 +340,7 @@ function section(cma, d) {
   const latest = d.latest.filter(s => cmaOf(s.area) === cma);
   const nonBare = latest.filter(s => isWinter(s.cond));
   const firstSnow = ch.find(r => isSnowCovered(r.to_cond));
-  const isToday = d.day === today;
+  const isToday = d.day === today || d.day === 'all';
   const sum = `<p class="rlsum"><b>${ch.length}</b> condition change${ch.length === 1 ? '' : 's'}${ch.length ? ' (' + esc(Object.entries(perArea).map(([a, n]) => a + ' ' + n).join(', ')) + ')' : ''} · <b>${up.length}</b> update${up.length === 1 ? '' : 's'} with no change` +
     (isToday ? ` · <b>${nonBare.length}</b> of ${latest.length} segments not bare now${d.latest_t ? ' (as of ' + esc(fmtT(d.latest_t)) + ')' : ''}` : '') +
     ` · first change to snow covered: ${firstSnow ? esc(firstSnow.road + ' ' + firstSnow.location) + ' at ' + esc(fmtT(firstSnow.t)) : 'none'}</p>`;
@@ -375,16 +371,22 @@ async function load(quiet) {
   if (!quiet) setStatus('loading', 'Loading road log…');
   const dl = await getJson('/roadlog/days');
   days = dl.days || []; today = dl.today || dayOf(Date.now());
-  if (!day) day = (/^#(\d{4}-\d{2}-\d{2})$/.exec(location.hash) || [])[1] || today;
-  const d = await getJson('/roadlog/' + day);
+  if (!day) day = (/^#(\d{4}-\d{2}-\d{2}|all)$/.exec(location.hash) || [])[1] || today;
   const first = days.length ? days[days.length - 1].day : today;
-  $('dayPick').value = day; $('dayPick').max = today; $('dayPick').min = first;
-  $('prevDay').setAttribute('aria-disabled', day <= first); $('nextDay').setAttribute('aria-disabled', day >= today);
-  $('csvBtn').href = API + '/roadlog/' + day + '/csv'; $('csvBtn').setAttribute('download', 'road-log-' + day + '.csv');
+  let d;
+  if (day === 'all') {   // every logged day together (real rows only)
+    const parts = await Promise.all(days.map(x => getJson('/roadlog/' + x.day)));
+    const cur = parts.find(x => x.day === today) || parts[0] || { latest: [], latest_t: null };
+    d = { day: 'all', rows: parts.flatMap(x => x.rows), latest: cur.latest, latest_t: cur.latest_t };
+  } else d = await getJson('/roadlog/' + day);
+  $('dayLbl').textContent = day === 'all' ? 'All days (since ' + first + ')' : day + (day === today ? ' (today)' : '');
+  $('dayPrev').disabled = day !== 'all' && day <= first; $('dayNext').disabled = day === 'all' || day >= today; $('dayAll').disabled = day === 'all';
+  $('csvBtn').hidden = day === 'all';
+  if (day !== 'all') { $('csvBtn').href = API + '/roadlog/' + day + '/csv'; $('csvBtn').setAttribute('download', 'road-log-' + day + '.csv'); }
   $('view').innerHTML = d.rows.length ? section('517', d) + section('518', d)
     : `<div class="waiting" style="margin-top:.7rem"><h2>Nothing logged on ${esc(day)}</h2><p>${day < first ? 'Logging started on ' + esc(first) + '.' : 'No 511 updates for CMA 517 or CMA 518 have been recorded for this day yet.'}</p></div>`;
   const tot = d.rows.filter(r => r.kind === 'change').length, upd = d.rows.filter(r => r.kind === 'update').length;
-  setStatus('ok', `${day === today ? 'Today' : day}: ${tot + upd ? (tot + upd) + ' road update' + (tot + upd === 1 ? '' : 's') + ' (' + tot + ' condition change' + (tot === 1 ? '' : 's') + ')' : 'no road updates from 511 yet'} across CMA 517 and CMA 518. Logging since ${first}.`);
+  setStatus('ok', `${day === today ? 'Today' : day === 'all' ? 'All days' : day}: ${tot + upd ? (tot + upd) + ' road update' + (tot + upd === 1 ? '' : 's') + ' (' + tot + ' condition change' + (tot === 1 ? '' : 's') + ')' : 'no road updates from 511 yet'} across CMA 517 and CMA 518. Logging since ${first}.`);
 }
 const REFRESH_MS = 60000;
 let timer = null, busy = false, again = false, firstLoad = true;
@@ -410,9 +412,9 @@ async function route() {
   }
 }
 function goDay(d) { if (!d) return; day = d; history.replaceState(null, '', d === today ? location.pathname : '#' + d); firstLoad = true; route(); }
-$('prevDay').onclick = e => { e.preventDefault(); goDay(shiftDay(day, -1)); };
-$('nextDay').onclick = e => { e.preventDefault(); goDay(shiftDay(day, 1)); };
-$('dayPick').onchange = () => goDay($('dayPick').value);
+$('dayPrev').onclick = () => goDay(day === 'all' ? today : shiftDay(day, -1));
+$('dayNext').onclick = () => goDay(shiftDay(day, 1));
+$('dayAll').onclick = () => goDay('all');
 $('retryBtn').onclick = route; $('refreshBtn').onclick = route;
 /* CSV from another origin: fetch and save a same-origin blob (plain link still works as a fallback) */
 $('csvBtn').addEventListener('click', async ev => {
