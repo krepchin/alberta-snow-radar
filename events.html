@@ -374,6 +374,13 @@ function coldest(s) {
   const c = t.reduce((a, x) => (x.min_temp < a.min_temp ? x : a), t[0]);
   return n1(c.min_temp) + '<small>°C</small>';
 }
+let DAY = null;
+function edmDay(t) { return new Date(t).toLocaleDateString('en-CA', { timeZone: 'America/Edmonton' }); }
+function dayBounds(d) {   // Edmonton local midnight to midnight, found by search so DST is handled
+  const start = s => { let t = Date.parse(s + 'T00:00:00Z') - 12 * 3600e3; while (edmDay(t) < s) t += 3600e3; while (edmDay(t - 60e3) === s) t -= 60e3; return t; };
+  return [start(d), start(shiftDay(d, 1))];
+}
+function shiftDay(d, n) { const x = new Date(d + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); }
 async function showList(quiet) {
   if (!quiet) setStatus('loading', 'Loading snow events…');
   const [list, st] = await Promise.all([getJson('/events'), getJson('/events/status').catch(() => null)]);
@@ -383,9 +390,16 @@ async function showList(quiet) {
     (lc.reasons && lc.reasons.length ? lc.reasons.join('; ') : 'no snowfall at the six towns, ' + (lc.cma517_non_bare == null ? '?' : lc.cma517_non_bare) + ' CMA 517 segments non-bare, ' + (lc.cma518_non_bare == null ? '' : lc.cma518_non_bare + ' CMA 518 segments non-bare, ') +
       (lc.snow_next_12h ? 'snow in the next 12 h forecast' : 'no snow in the next 12 h forecast') + ', ' + (lc.emcon_in_box == null ? (lc.plows_in_box == null ? '?' : lc.plows_in_box + ' plows') : lc.emcon_in_box + ' Emcon trucks') + ' in CMA 517/518.') : 'No check has run yet.';
   v.innerHTML = '';
-  const evs = list.events || [];
-  const real = evs.filter(e => !e.is_test);
-  if (!real.length) {
+  const allEvs = list.events || [];
+  // v6.0.2: past-day browsing. DAY = null shows all; otherwise events whose span overlaps that Edmonton day.
+  const evs = DAY ? allEvs.filter(e => { const [a, b] = dayBounds(DAY); return e.started < b && (e.ended || Date.now()) >= a; }) : allEvs;
+  v.insertAdjacentHTML('beforeend', `<p class="muted" style="margin:.5rem 0 0;font:500 .7rem/1.5 var(--mono)"><button type="button" class="retry" id="dayPrev" style="margin:0">‹ Prev</button> <span id="dayLbl">${DAY ? esc(DAY) + (DAY === edmDay(Date.now()) ? ' (today)' : '') : 'All days'}</span> <button type="button" class="retry" id="dayNext" style="margin:0"${!DAY ? ' disabled' : ''}>Next ›</button> <button type="button" class="retry" id="dayAll" style="margin:0"${!DAY ? ' disabled' : ''}>All</button></p>`);
+  $('dayPrev').onclick = () => { DAY = shiftDay(DAY || edmDay(Date.now()), DAY ? -1 : 0); showList(); };
+  $('dayNext').onclick = () => { const n = shiftDay(DAY, 1); DAY = n > edmDay(Date.now()) ? null : n; showList(); };
+  $('dayAll').onclick = () => { DAY = null; showList(); };
+  if (DAY && !evs.length) v.insertAdjacentHTML('beforeend', `<div class="waiting"><h2>No events on ${esc(DAY)}</h2><p>No recorded snow event overlaps this day. Use Prev / Next or All.</p></div>`);
+  const real = allEvs.filter(e => !e.is_test);
+  if (!real.length && !DAY) {
     v.insertAdjacentHTML('beforeend', `<div class="waiting"><h2>Waiting for the first snow event of the season</h2><p>Recording starts on its own when Open-Meteo shows snow falling at Three Hills, Drumheller or Stettler (CMA 517) or Castor, Consort or Czar (CMA 518), a CMA 517 or CMA 518 road is reported non-bare, or Emcon trucks move with snow in the 12 h forecast.${evs.length ? ' Entries marked TEST below are short samples, not real events.' : ''}</p></div>`);
   }
   if (evs.length) {
@@ -406,7 +420,7 @@ async function showList(quiet) {
     }).join('') + '</div>');
     v.querySelectorAll('a[download]').forEach(wireCsv);
   }
-  setStatus('ok', (evs.length ? evs.length + ' recorded (' + (evs.length - real.length) + ' TEST). ' : '') + checkTxt);
+  setStatus('ok', (allEvs.length ? allEvs.length + ' recorded (' + (allEvs.length - real.length) + ' TEST)' + (DAY ? ', ' + evs.length + ' on ' + DAY : '') + '. ' : '') + checkTxt);
   schedule(REFRESH_MS);
 }
 

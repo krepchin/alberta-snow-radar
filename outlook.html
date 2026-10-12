@@ -24,102 +24,153 @@ td.n{text-align:right;white-space:nowrap;font-family:var(--mono)}
 .na{color:var(--mute);font-style:italic}.warn{background:#3a1818;border-color:#7a2a2a}
 .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:.85rem}.kv b{font-family:var(--mono);font-weight:600}
 .note{font-size:.78rem;color:var(--mute)}
-</style></head><body>
+#map{height:52vh;min-height:300px;border-radius:12px;border:1px solid var(--line);margin-top:8px}
+.leaflet-container{font:inherit;background:#0a111d}
+.legend-box{border:1px solid var(--line);border-radius:12px;background:rgba(3,7,14,.6);color:var(--text);margin-top:8px}
+.legend-box summary{list-style:none;cursor:pointer;min-height:42px;display:flex;align-items:center;justify-content:space-between;gap:.5rem;padding:0 .8rem;font:600 .7rem/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--mute)}
+.legend-box summary::-webkit-details-marker{display:none}.legend-box .lg-body{padding:0 .8rem .6rem;font-size:.8rem}
+.legend-box i{display:inline-block;width:18px;height:4px;border-radius:2px;margin-right:6px;vertical-align:middle}
+</style>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script></head><body>
 <header><a href="index.html">‹ Map</a><h1>Outlook</h1><a href="events.html">Events ›</a></header>
 <main>
 <p class="upd" id="upd">Loading…</p>
-<div class="tabs" role="tablist" id="tabs"></div>
+<div class="tabs" role="tablist" id="tabs" style="flex-wrap:wrap"></div>
 <div id="out"></div>
+<div class="card"><h2 id="mapH">Road risk map</h2><div class="tabs" id="dayTabs"></div><div id="map" role="region" aria-label="Road risk map"></div>
+<details class="legend-box" open><summary>Legend <span aria-hidden="true">&#9662;</span></summary><div class="lg-body" id="lg"></div></details>
+<p class="src">Segments: 511 Alberta geometry via relay. Colour = that day's attention score (Open-Meteo snowfall at the segment + current 511 condition + recorded history). Tap a road for details.</p></div>
 <div class="card note"><h2>How this outlook works</h2>
-<p>Computed in your browser each time the page opens, when you return to it, and every 10 minutes. Rule-based scoring, no AI service. Every number is labelled with its source; anything missing shows "not enough data".</p>
+<p>Forecast only, next 72 hours. Computed in your browser each time the page opens, when you return to it, and every 10 minutes. Rule-based scoring, no AI service. Every number is labelled with its source; anything missing shows "not enough data".</p>
 <p><b>Weather:</b> Open-Meteo hourly snowfall, temperature, wind gust (best-match blend plus GEM, GFS, ECMWF for model agreement); Environment Canada GeoMet HRDPS 3-h snowfall at the town; Environment Canada weather alerts.<br>
-<b>Roads (CMA 517 only):</b> 511 Alberta live conditions (via relay), Open-Meteo forecast snowfall at each segment's midpoint, past snow-event road history and Emcon deployments from the snow events recorder.</p>
-<p><b>Road attention score</b> = forecast 24-h snowfall at the segment (cm, Open-Meteo) + 2 if 511 currently not bare + 0.5 × past times the segment went non-bare in recorded events. Shown only when the score is above 0. "When" = first forecast hour with snowfall ≥ 0.1 cm at the segment.</p>
-<p><b>Confidence:</b> High = the models agree (24-h snowfall spread ≤ 1 cm, or all show none) and HRDPS agrees and there are 3+ recorded events. Medium = one of those fails. Low = models disagree by more than 3 cm, or two or more fail.</p></div>
+<b>Roads (CMA 517 and CMA 518, each town's own area):</b> 511 Alberta live conditions (via relay), Open-Meteo forecast snowfall at each segment's midpoint, past snow-event road history and Emcon deployments from the snow events recorder.</p>
+<p><b>Road attention score</b> = forecast snowfall at the segment over the window (cm, Open-Meteo; 72 h for the table, 24 h per day on the map) + 2 if 511 currently not bare (72 h and day 1 only) + 0.5 × past times the segment went non-bare in recorded events. Tables list roads scoring above 0. "When" = first forecast hour with snowfall ≥ 0.1 cm at the segment.</p>
+<p><b>Confidence (per day):</b> checks are model agreement for that day (spread ≤ 1 cm, or all none), HRDPS within 2 cm of Open-Meteo, and 3+ recorded events. HRDPS reaches only 48 h, so day 3 always fails the HRDPS check (shown "not available"), which lowers confidence with lead time. High = all pass; medium = one fails; low = two or more fail, or models disagree by more than 3 cm. The road confidence uses the weakest day and is capped at medium with fewer than 3 events.</p></div>
 </main>
 <script>
 const EV='https://alberta-snow-events.krepchin.workers.dev', RELAY='https://alberta-plow-relay.krepchin.workers.dev';
-const TOWNS=[{id:'th',name:'Three Hills',lat:51.70722,lon:-113.26472,area:'CMA 517 - Three Hills'},{id:'dr',name:'Drumheller',lat:51.46444,lon:-112.71889,area:'CMA 517 - Drumheller'},{id:'st',name:'Stettler',lat:52.32389,lon:-112.70444,area:'CMA 517 - Stettler'}];
+const TOWNS=[{id:'th',name:'Three Hills',lat:51.70722,lon:-113.26472,area:'CMA 517 - Three Hills'},{id:'dr',name:'Drumheller',lat:51.46444,lon:-112.71889,area:'CMA 517 - Drumheller'},{id:'st',name:'Stettler',lat:52.32389,lon:-112.70444,area:'CMA 517 - Stettler'},{id:'ca',name:'Castor',lat:52.21684,lon:-111.88509,area:'CMA 518 - Castor'},{id:'co',name:'Consort',lat:52.01683,lon:-110.76836,area:'CMA 518 - Consort'},{id:'cz',name:'Czar',lat:52.45013,lon:-110.83494,area:'CMA 518 - Czar'}];
+const cma=t=>t.area.slice(4,7);
 const MODELS=['gem_seamless','gfs_seamless','ecmwf_ifs025'], MN={gem_seamless:'GEM',gfs_seamless:'GFS',ecmwf_ifs025:'ECMWF'};
-let cur=location.hash.slice(1)||'th', DATA=null;
+const H=72, DAYS=[0,1,2];
+let MAPFOR=null,cur=location.hash.slice(1)||'th', DATA=null, MDAY=0, map=null, segLayer=null;
 const $=s=>document.querySelector(s), esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const NA='<span class="na">not enough data</span>';
+const NA='<span class="na">not enough data</span>', NAV='<span class="na">not available</span>';
 const fmt=(v,d=1)=>v==null||!isFinite(v)?NA:(+v).toFixed(d);
 const tfmt=t=>new Date(t).toLocaleString('en-CA',{timeZone:'America/Edmonton',weekday:'short',hour:'numeric',minute:'2-digit'})+' MT';
+const hl=s=>s?new Date(s).toLocaleDateString('en-CA',{weekday:'short'})+' '+s.slice(11):'';
+const dayLbl=d=>'Day '+(d+1)+' ('+(d*24)+'–'+(d*24+24)+' h)';
 async function J(u){try{const r=await fetch(u,{cache:'no-store'});if(!r.ok)throw 0;return await r.json()}catch(e){return null}}
 const km=(a,b,c,d)=>{const R=6371,x=(c-a)*Math.PI/180,y=(d-b)*Math.PI/180,h=Math.sin(x/2)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(y/2)**2;return 2*R*Math.asin(Math.sqrt(h))};
 const bare=c=>/^bare/i.test(c||'');
+const sumA=a=>a&&a.length&&a.every(v=>v!=null)?a.reduce((x,y)=>x+y,0):null;
 function mid(g){const L=g.type==='LineString'?[g.coordinates]:g.coordinates;const pts=L.flat();const p=pts[Math.floor(pts.length/2)];return p?{lon:p[0],lat:p[1]}:null}
 async function hrdps(t){
-  // EC GeoMet HRDPS 3-h snowfall at the town, next 24 h (8 steps)
-  const caps=null, now=new Date(); now.setUTCMinutes(0,0,0); const out=[];
-  await Promise.all([...Array(8)].map(async(_,i)=>{const T=new Date(now.getTime()+(i+1)*3*3600e3).toISOString().replace('.000','');
+  // EC GeoMet HRDPS 3-h snowfall at the town; the model runs to 48 h, so 16 steps (day 1 = steps 1-8, day 2 = 9-16)
+  const now=new Date();now.setUTCMinutes(0,0,0);const v=Array(16).fill(null);
+  await Promise.all(v.map(async(_,i)=>{const T=new Date(now.getTime()+(i+1)*3*3600e3).toISOString().replace('.000','');
     const u='https://geo.weather.gc.ca/geomet?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetFeatureInfo&LAYERS=HRDPS.CONTINENTAL.DIAG_SN_PT3H&QUERY_LAYERS=HRDPS.CONTINENTAL.DIAG_SN_PT3H&CRS=EPSG:4326&BBOX='+(t.lat-.05)+','+(t.lon-.05)+','+(t.lat+.05)+','+(t.lon+.05)+'&WIDTH=3&HEIGHT=3&I=1&J=1&INFO_FORMAT=application/json&TIME='+T;
-    const j=await J(u);const f=j&&j.features&&j.features[0];const v=f&&f.properties&&(f.properties.value??f.properties.Value);if(v!=null&&isFinite(+v))out.push(+v)}));
-  return out.length?{steps:out.length,sum:out.reduce((a,b)=>a+b,0)}:null;
+    const j=await J(u);const f=j&&j.features&&j.features[0];const x=f&&f.properties&&(f.properties.value??f.properties.Value);if(x!=null&&isFinite(+x))v[i]=+x}));
+  const day=d=>{const a=v.slice(d*8,d*8+8).filter(x=>x!=null);return a.length?{steps:a.length,sum:a.reduce((p,q)=>p+q,0)}:null};
+  return [day(0),day(1),'beyond'];
 }
 async function load(){
   $('#upd').textContent='Loading sources…';
-  const [roads,evl,alerts,...hr]=await Promise.all([J(RELAY+'/roads'),J(EV+'/events'),J('https://api.weather.gc.ca/collections/weather-alerts/items?f=json&bbox=-113.6,51.3,-112.4,52.5&limit=50'),...TOWNS.map(hrdps)]);
-  const om=await J('https://api.open-meteo.com/v1/forecast?latitude='+TOWNS.map(t=>t.lat)+'&longitude='+TOWNS.map(t=>t.lon)+'&hourly=snowfall,temperature_2m,wind_gusts_10m&models=best_match,'+MODELS+'&forecast_hours=48&timezone=America/Edmonton');
-  // CMA 517 segments
-  const segs=(roads&&roads.features||[]).filter(f=>(f.properties.area||'').startsWith('CMA 517 - ')).map(f=>({...f.properties,m:mid(f.geometry)})).filter(s=>s.m);
-  let segOm=null;
-  if(segs.length){segOm=[];for(let i=0;i<segs.length;i+=60){const c=segs.slice(i,i+60);const j=await J('https://api.open-meteo.com/v1/forecast?latitude='+c.map(s=>s.m.lat.toFixed(4))+'&longitude='+c.map(s=>s.m.lon.toFixed(4))+'&hourly=snowfall&forecast_hours=24&timezone=America/Edmonton');if(!j){segOm=null;break}segOm.push(...(Array.isArray(j)?j:[j]))}}
-  segs.forEach((s,i)=>{const h=segOm&&segOm[i]&&segOm[i].hourly;if(h){s.snow24=h.snowfall.reduce((a,b)=>a+(b||0),0);const k=h.snowfall.findIndex(v=>v>=0.1);s.first=k>=0?h.time[k]:null}});
-  // history from recorded events (non-test)
+  const [roads,evl,alerts,...hr]=await Promise.all([J(RELAY+'/roads'),J(EV+'/events'),J('https://api.weather.gc.ca/collections/weather-alerts/items?f=json&bbox=-113.6,51.3,-110.0,52.7&limit=50'),...TOWNS.map(hrdps)]);
+  const om=await J('https://api.open-meteo.com/v1/forecast?latitude='+TOWNS.map(t=>t.lat)+'&longitude='+TOWNS.map(t=>t.lon)+'&hourly=snowfall,temperature_2m,wind_gusts_10m&models=best_match,'+MODELS+'&forecast_hours='+H+'&timezone=America/Edmonton');
+  const segs=(roads&&roads.features||[]).filter(f=>(f.properties.area||'').startsWith('CMA 517 - ')||(f.properties.area||'').startsWith('CMA 518 - ')).map(f=>({...f.properties,geom:f.geometry,m:mid(f.geometry)})).filter(s=>s.m);
+  let segOm=[];
+  for(let i=0;i<segs.length;i+=60){const c=segs.slice(i,i+60);const j=await J('https://api.open-meteo.com/v1/forecast?latitude='+c.map(s=>s.m.lat.toFixed(4))+'&longitude='+c.map(s=>s.m.lon.toFixed(4))+'&hourly=snowfall&forecast_hours='+H+'&timezone=America/Edmonton');if(!j){segOm=null;break}segOm.push(...(Array.isArray(j)?j:[j]))}
+  segs.forEach((s,i)=>{const h=segOm&&segOm[i]&&segOm[i].hourly;if(h&&h.snowfall&&h.snowfall.length>=H){
+    s.day=DAYS.map(d=>{const a=h.snowfall.slice(d*24,d*24+24);const k=a.findIndex(v=>v>=0.1);return {snow:sumA(a),first:k>=0?h.time[d*24+k]:null}});
+    s.snow72=sumA(h.snowfall.slice(0,H));const k=h.snowfall.findIndex(v=>v>=0.1);s.first=k>=0?h.time[k]:null}});
   const evs=(evl&&evl.events||[]).filter(e=>!e.is_test);
   const det=(await Promise.all(evs.slice(0,20).map(e=>J(EV+'/events/'+e.id)))).filter(Boolean);
-  const hist={}, emcon={th:0,dr:0,st:0};
-  det.forEach(d=>{(d.transitions||[]).forEach(t=>{if(t.cma517&&t.from_cond!=null&&!bare(t.to_cond)&&!/closed/i.test(t.to_cond))hist[t.seg_id]=(hist[t.seg_id]||0)+1});
+  const hist={}, emcon={th:0,dr:0,st:0,ca:0,co:0,cz:0};
+  det.forEach(d=>{(d.transitions||[]).forEach(t=>{if((t.cma517||t.cma518)&&t.from_cond!=null&&!bare(t.to_cond)&&!/closed/i.test(t.to_cond))hist[t.seg_id]=(hist[t.seg_id]||0)+1});
     Object.values(d.trucks||{}).forEach(tr=>{if(tr.lat==null)return;let best=null,bd=1e9;TOWNS.forEach(t=>{const x=km(t.lat,t.lon,tr.lat,tr.lon);if(x<bd){bd=x;best=t.id}});if(best&&bd<40)emcon[best]+=(tr.deps||[]).length})});
   DATA={roads:!!roads,segs,segOk:!!segOm,hist,emcon,nEv:det.length,alerts,hr,om:om?(Array.isArray(om)?om:[om]):null,t:Date.now()};
   render();
 }
 function townW(i){
-  const o=DATA.om&&DATA.om[i];if(!o)return null;const h=o.hourly,n=Math.min(24,h.time.length),S=k=>h[k]?h[k].slice(0,n):null,sum=a=>a&&a.every(v=>v!=null)?a.reduce((x,y)=>x+y,0):null;
-  const m={};MODELS.forEach(k=>m[k]=sum(S('snowfall_'+k)));
-  const tm=S('temperature_2m_best_match')||S('temperature_2m'),g=S('wind_gusts_10m_best_match')||S('wind_gusts_10m'),sn=S('snowfall_best_match')||S('snowfall');
-  let pk=null;if(sn){const mx=Math.max(...sn);if(mx>0)pk={v:mx,t:h.time[sn.indexOf(mx)]}}
-  return {best:sum(sn),s48:(h.snowfall_best_match||h.snowfall||[]).reduce((a,b)=>a+(b||0),0),m,tmin:tm?Math.min(...tm.filter(v=>v!=null)):null,gmax:g?Math.max(...g.filter(v=>v!=null)):null,pk};
+  const o=DATA.om&&DATA.om[i];if(!o)return null;const h=o.hourly;if(!h||h.time.length<H)return null;
+  const col=k=>h[k+'_best_match']||h[k];
+  const sn=col('snowfall'),tm=col('temperature_2m'),g=col('wind_gusts_10m');
+  const day=DAYS.map(d=>{const sl=a=>a?a.slice(d*24,d*24+24):null;const m={};MODELS.forEach(k=>m[k]=sumA(sl(h['snowfall_'+k])));
+    const s=sl(sn),t=sl(tm)&&sl(tm).filter(v=>v!=null),gg=sl(g)&&sl(g).filter(v=>v!=null);
+    return {snow:sumA(s),m,tmin:t&&t.length?Math.min(...t):null,gmax:gg&&gg.length?Math.max(...gg):null}});
+  let pk=null;const a=sn.slice(0,H);if(a.every(v=>v!=null)){const mx=Math.max(...a);if(mx>0)pk={v:mx,t:h.time[a.indexOf(mx)]}}
+  return {day,pk};
 }
-function confidence(w,hr){
-  const fails=[];let low=false;
-  const vals=w?Object.values(w.m).filter(v=>v!=null):[];
-  if(vals.length<2){fails.push('fewer than two models available')}else{const sp=Math.max(...vals)-Math.min(...vals);if(sp>3){low=true;fails.push('the models disagree by '+sp.toFixed(1)+' cm over 24 h')}else if(sp>1&&Math.max(...vals)>0)fails.push('the models differ by '+sp.toFixed(1)+' cm over 24 h')}
-  if(!hr)fails.push('HRDPS returned no value to cross-check');else if(w&&w.best!=null&&Math.abs(hr.sum-w.best)>2)fails.push('HRDPS ('+hr.sum.toFixed(1)+' cm) and Open-Meteo ('+w.best.toFixed(1)+' cm) differ');
+function confidence(w,hr,d){
+  // checks: model agreement for that day, HRDPS cross-check (days 1-2 only), road history, and lead time
+  const fails=[];let low=false;const D=w&&w.day[d];
+  const vals=D?Object.values(D.m).filter(v=>v!=null):[];
+  if(vals.length<2)fails.push('fewer than two models available');else{const sp=Math.max(...vals)-Math.min(...vals);if(sp>3){low=true;fails.push('the models disagree by '+sp.toFixed(1)+' cm')}else if(sp>1&&Math.max(...vals)>0)fails.push('the models differ by '+sp.toFixed(1)+' cm')}
+  const hv=hr[d];
+  if(hv==='beyond')fails.push('beyond the 48 h HRDPS range, so no cross-check at 48–72 h lead time');
+  else if(!hv)fails.push('HRDPS returned no value to cross-check');
+  else if(D&&D.snow!=null&&Math.abs(hv.sum-D.snow)>2)fails.push('HRDPS ('+hv.sum.toFixed(1)+' cm) and Open-Meteo ('+D.snow.toFixed(1)+' cm) differ');
   if(DATA.nEv<3)fails.push('little road history so far ('+DATA.nEv+' recorded event'+(DATA.nEv==1?'':'s')+')');
   const lvl=low||fails.length>=2?'low':fails.length?'medium':'high';
   return {lvl,why:fails.length?fails[0].replace(/^./,c=>c.toUpperCase())+(fails.length>1?'; also '+fails.slice(1).join('; '):'')+'.':'Models agree, HRDPS agrees, and there are '+DATA.nEv+' recorded events.'};
 }
+function roadConf(c){return !DATA.segOk||!DATA.roads?{lvl:'low',why:'Road forecast data unavailable right now.'}:DATA.nEv<3?{lvl:c.lvl=='high'?'medium':c.lvl,why:'Little road history so far ('+DATA.nEv+' recorded events); weather confidence: '+c.lvl+'.'}:{lvl:c.lvl,why:'Follows weather confidence: '+c.why}}
+// score for a segment over a window: forecast snow (cm) + 2 if not bare now (day 1 / 72 h only) + 0.5 x past non-bare count
+function score(s,d){if(!s.day)return null;const h=DATA.hist[s.id]||0,nb=!bare(s.condition);const sn=d==null?s.snow72:s.day[d].snow;if(sn==null)return null;return sn+((d==null||d===0)&&nb?2:0)+0.5*h}
+function why(s,d){const h=DATA.hist[s.id]||0,sn=d==null?s.snow72:s.day&&s.day[d].snow;return [sn>0?sn.toFixed(1)+' cm forecast (Open-Meteo)':'',(d==null||d===0)&&!bare(s.condition)?esc(s.condition)+' now (511)':'',h?h+'× non-bare in past events (recorder)':''].filter(Boolean).join('; ')||'no forecast snow, bare now, no history'}
+const COL=sc=>sc==null?'#94a3b8':sc<=0?'#22c55e':sc<2?'#facc15':sc<5?'#f97316':'#ef4444';
+function townOf(s){return TOWNS.find(t=>t.area===s.area)}
 function render(){
-  $('#tabs').innerHTML=TOWNS.map(t=>'<button role="tab" aria-selected="'+(t.id==cur)+'" data-id="'+t.id+'">'+t.name+'</button>').join('');
-  const i=TOWNS.findIndex(t=>t.id==cur),t=TOWNS[i],w=townW(i),hr=DATA.hr[i],c=confidence(w,hr);
-  const al=(DATA.alerts&&DATA.alerts.features||[]).filter(f=>{const p=f.properties||{};return true});
+  $('#tabs').innerHTML=['517','518'].map(g=>'<span class="src" style="flex-basis:100%">CMA '+g+'</span>'+TOWNS.filter(t=>cma(t)===g).map(t=>'<button role="tab" aria-selected="'+(t.id==cur)+'" data-id="'+t.id+'">'+t.name+'</button>').join('')).join('');
+  const i=TOWNS.findIndex(t=>t.id==cur),t=TOWNS[i],w=townW(i),hr=DATA.hr[i],cs=DAYS.map(d=>confidence(w,hr,d)),R={low:0,medium:1,high:2},c72=cs.reduce((a,b)=>R[b.lvl]<R[a.lvl]?b:a);
+  const al=DATA.alerts&&DATA.alerts.features||[];
   const segs=DATA.segs.filter(s=>s.area===t.area);
-  const scored=segs.map(s=>{const h=DATA.hist[s.id]||0,nb=!bare(s.condition);const sc=s.snow24==null?null:s.snow24+(nb?2:0)+0.5*h;return {...s,h,nb,sc}});
+  const scored=segs.map(s=>({...s,sc:score(s,null)}));
   const att=scored.filter(s=>s.sc!=null&&s.sc>0).sort((a,b)=>b.sc-a.sc).slice(0,8);
-  const hard=scored.filter(s=>s.snow24!=null&&s.snow24>0).sort((a,b)=>b.snow24-a.snow24).slice(0,5);
-  const roadConf=!DATA.segOk||!DATA.roads?{lvl:'low',why:'Road forecast data unavailable right now.'}:DATA.nEv<3?{lvl:c.lvl=='high'?'medium':c.lvl,why:'Little road history so far ('+DATA.nEv+' recorded events); weather confidence: '+c.lvl+'.'}:{lvl:c.lvl,why:'Follows weather confidence: '+c.why};
+  const hard=scored.filter(s=>s.snow72!=null&&s.snow72>0).sort((a,b)=>b.snow72-a.snow72).slice(0,5);
+  const rc=roadConf(c72);
   let h='';
   if(al.length)h+='<div class="card warn"><h2>Environment Canada alerts</h2>'+al.map(f=>'<div>'+esc(f.properties.alert_name_en||f.properties.headline||'Alert')+' <span class="src">'+esc(f.properties.feature_name_en||'')+'</span></div>').join('')+'<div class="src">Source: ECCC weather-alerts</div></div>';
-  h+='<div class="grid"><div class="card"><h2>Weather outlook · '+t.name+'</h2><span class="conf '+c.lvl+'">'+c.lvl+' confidence</span><p class="reason">'+esc(c.why)+'</p>';
-  h+='<h3>Next 24 h</h3><div class="kv"><span>Snowfall</span><b>'+(w?fmt(w.best)+' cm':NA)+' <span class="src">Open-Meteo</span></b>';
-  h+='<span>Snowfall 48 h</span><b>'+(w?fmt(w.s48)+' cm':NA)+' <span class="src">Open-Meteo</span></b>';
-  h+='<span>Heaviest hour</span><b>'+(w&&w.pk?fmt(w.pk.v)+' cm at '+esc(w.pk.t.slice(11))+' '+new Date(w.pk.t).toLocaleDateString('en-CA',{weekday:'short'}):w?'no snow forecast':NA)+' <span class="src">Open-Meteo</span></b>';
-  h+='<span>HRDPS snowfall</span><b>'+(hr?fmt(hr.sum)+' cm ('+hr.steps+'×3 h)':NA)+' <span class="src">ECCC GeoMet HRDPS</span></b>';
-  h+='<span>Low temp</span><b>'+(w?fmt(w.tmin)+' °C':NA)+' <span class="src">Open-Meteo</span></b><span>Max gust</span><b>'+(w?fmt(w.gmax,0)+' km/h':NA)+' <span class="src">Open-Meteo</span></b></div>';
-  h+='<h3>Model agreement (24 h snowfall)</h3><div class="kv">'+MODELS.map(k=>'<span>'+MN[k]+'</span><b>'+(w&&w.m[k]!=null?fmt(w.m[k])+' cm':NA)+' <span class="src">Open-Meteo</span></b>').join('')+'</div>';
-  h+='<h3>Where snow hits hardest (CMA 517 roads near '+t.name+')</h3>'+(!DATA.segOk?NA:hard.length?'<table><tr><th>Road</th><th>Section</th><th>24 h cm</th></tr>'+hard.map(s=>'<tr><td>'+esc(s.road)+'</td><td>'+esc(s.location)+'</td><td class="n">'+fmt(s.snow24)+'</td></tr>').join('')+'</table><div class="src">Open-Meteo at segment midpoints</div>':'<p class="note">No snowfall forecast on any '+t.area+' segment in the next 24 h (Open-Meteo).</p>');
-  h+='</div><div class="card"><h2>CMA 517 road outlook · '+t.area.replace('CMA 517 - ','')+'</h2><span class="conf '+roadConf.lvl+'">'+roadConf.lvl+' confidence</span><p class="reason">'+esc(roadConf.why)+'</p>';
+  h+='<div class="grid"><div class="card"><h2>Weather outlook · '+t.name+' · next 72 h</h2>';
+  h+='<table><tr><th></th>'+DAYS.map(d=>'<th>'+dayLbl(d)+'</th>').join('')+'</tr>';
+  h+='<tr><td>Confidence</td>'+cs.map(c=>'<td><span class="conf '+c.lvl+'">'+c.lvl+'</span></td>').join('')+'</tr>';
+  h+='<tr><td>Snowfall <span class="src">Open-Meteo</span></td>'+DAYS.map(d=>'<td class="n">'+(w?fmt(w.day[d].snow)+' cm':NA)+'</td>').join('')+'</tr>';
+  h+='<tr><td>HRDPS snowfall <span class="src">ECCC GeoMet</span></td>'+DAYS.map(d=>'<td class="n">'+(hr[d]==='beyond'?NAV:hr[d]?fmt(hr[d].sum)+' cm':NA)+'</td>').join('')+'</tr>';
+  MODELS.forEach(k=>h+='<tr><td>'+MN[k]+' <span class="src">Open-Meteo</span></td>'+DAYS.map(d=>'<td class="n">'+(w&&w.day[d].m[k]!=null?fmt(w.day[d].m[k])+' cm':NA)+'</td>').join('')+'</tr>');
+  h+='<tr><td>Low temp <span class="src">Open-Meteo</span></td>'+DAYS.map(d=>'<td class="n">'+(w?fmt(w.day[d].tmin)+' °C':NA)+'</td>').join('')+'</tr>';
+  h+='<tr><td>Max gust <span class="src">Open-Meteo</span></td>'+DAYS.map(d=>'<td class="n">'+(w?fmt(w.day[d].gmax,0)+' km/h':NA)+'</td>').join('')+'</tr></table>';
+  h+=DAYS.map(d=>'<p class="reason"><b>Day '+(d+1)+':</b> '+esc(cs[d].why)+'</p>').join('');
+  h+='<div class="kv" style="margin-top:8px"><span>Heaviest hour (72 h)</span><b>'+(w&&w.pk?fmt(w.pk.v)+' cm, '+esc(hl(w.pk.t)):w?'no snow forecast':NA)+' <span class="src">Open-Meteo</span></b></div>';
+  h+='<h3>Where snow hits hardest (CMA '+cma(t)+' roads near '+t.name+', 72 h)</h3>'+(!DATA.segOk?NA:hard.length?'<table><tr><th>Road</th><th>Section</th><th>72 h cm</th></tr>'+hard.map(s=>'<tr><td>'+esc(s.road)+'</td><td>'+esc(s.location)+'</td><td class="n">'+fmt(s.snow72)+'</td></tr>').join('')+'</table><div class="src">Open-Meteo at segment midpoints</div>':'<p class="note">No snowfall forecast on any '+t.area+' segment in the next 72 h (Open-Meteo).</p>');
+  h+='</div><div class="card"><h2>CMA '+cma(t)+' road outlook · '+t.area.slice(10)+' · next 72 h</h2><span class="conf '+rc.lvl+'">'+rc.lvl+' confidence</span><p class="reason">'+esc(rc.why)+'</p>';
   const nb=segs.filter(s=>!bare(s.condition)).length;
   h+='<div class="kv" style="margin-top:8px"><span>Segments</span><b>'+(DATA.roads?segs.length:NA)+' <span class="src">511 Alberta</span></b><span>Not bare now</span><b>'+(DATA.roads?nb:NA)+' <span class="src">511 Alberta</span></b><span>Recorded events</span><b>'+DATA.nEv+' <span class="src">snow events recorder</span></b><span>Emcon deployments</span><b>'+(DATA.nEv?DATA.emcon[t.id]+' in recorded events near '+t.name:NA)+' <span class="src">snow events recorder</span></b></div>';
-  h+='<h3>Roads likely to need attention</h3>'+(!DATA.segOk||!DATA.roads?NA:att.length?'<table><tr><th>Road</th><th>When</th><th>Why</th><th>Score</th></tr>'+att.map(s=>'<tr><td>'+esc(s.road)+'<div class="src">'+esc(s.location)+'</div></td><td>'+(s.first?esc(s.first.slice(11))+' '+new Date(s.first).toLocaleDateString('en-CA',{weekday:'short'}):'now')+'</td><td>'+[s.snow24>0?fmt(s.snow24)+' cm forecast (Open-Meteo)':'',s.nb?esc(s.condition)+' now (511)':'',s.h?s.h+'× non-bare in past events (recorder)':''].filter(Boolean).join('; ')+'</td><td class="n">'+s.sc.toFixed(1)+'</td></tr>').join('')+'</table>':'<p class="note">No '+t.area+' segment shows forecast snow, a non-bare condition, or snow history right now, so none is flagged.</p>');
+  h+='<h3>Roads likely to need attention (72 h)</h3>'+(!DATA.segOk||!DATA.roads?NA:att.length?'<table><tr><th>Road</th><th>When</th><th>Why</th><th>Score</th></tr>'+att.map(s=>'<tr><td>'+esc(s.road)+'<div class="src">'+esc(s.location)+'</div></td><td>'+(s.first?esc(hl(s.first)):'now')+'</td><td>'+why(s,null)+'</td><td class="n">'+s.sc.toFixed(1)+'</td></tr>').join('')+'</table>':'<p class="note">No '+t.area+' segment shows forecast snow in the next 72 h, a non-bare condition, or snow history right now, so none is flagged.</p>');
   h+='</div></div>';
   $('#out').innerHTML=h;
   $('#upd').innerHTML='Updated '+tfmt(DATA.t)+' · <button id="rf">Refresh</button>';
   $('#rf').onclick=load;
   document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{cur=b.dataset.id;history.replaceState(null,'','#'+cur);render()});
+  drawMap();
+}
+function drawMap(){
+  $('#dayTabs').innerHTML=DAYS.map(d=>'<button aria-selected="'+(d==MDAY)+'" data-d="'+d+'">Day '+(d+1)+'</button>').join('');
+  document.querySelectorAll('#dayTabs button').forEach(b=>b.onclick=()=>{MDAY=+b.dataset.d;drawMap()});
+  $('#lg').innerHTML=[['#ef4444','Score 5 or more'],['#f97316','Score 2 to 5'],['#facc15','Score above 0, under 2'],['#22c55e','Score 0 (nothing flagged)'],['#94a3b8','No forecast data']].map(x=>'<div><i style="background:'+x[0]+'"></i>'+x[1]+'</div>').join('')+'<div class="src">'+dayLbl(MDAY)+'. Day 1 includes the current 511 condition; days 2–3 use forecast snow and history only.</div>';
+  if(!window.L){$('#map').innerHTML='<p class="note" style="padding:10px">Map library did not load.</p>';return}
+  if(!map){map=L.map('map',{zoomControl:true,attributionControl:true}).setView([51.9,-112.95],8);
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',{maxZoom:16,attribution:'Tiles &copy; Esri'}).addTo(map);
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}',{maxZoom:16}).addTo(map)}
+  if(segLayer)segLayer.remove();
+  const T=TOWNS.find(x=>x.id==cur);$('#mapH').textContent='Road risk map · '+T.area;
+  if(!DATA.roads){return}
+  const confBy={};TOWNS.forEach((t,i)=>{confBy[t.area]=roadConf(confidence(townW(i),DATA.hr[i],MDAY))});
+  segLayer=L.geoJSON({type:'FeatureCollection',features:DATA.segs.filter(s=>s.area===T.area).map(s=>({type:'Feature',geometry:s.geom,properties:{id:s.id}}))},{
+    style:f=>{const s=DATA.segs.find(x=>x.id===f.properties.id);return {color:COL(score(s,MDAY)),weight:5,opacity:.95}},
+    onEachFeature:(f,ly)=>{const s=DATA.segs.find(x=>x.id===f.properties.id),sc=score(s,MDAY),c=confBy[s.area]||{lvl:'low',why:''};
+      ly.bindPopup('<b>'+esc(s.road)+'</b><br>'+esc(s.location)+'<br><small>'+esc(s.area)+'</small><br>'+dayLbl(MDAY)+'<br>When: '+(sc==null?'not enough data':s.day[MDAY].first?esc(hl(s.day[MDAY].first)):'no snow forecast this day')+'<br>Score: '+(sc==null?'not enough data':sc.toFixed(1))+'<br>Why: '+(sc==null?'no Open-Meteo data for this segment':why(s,MDAY))+'<br>Confidence: '+c.lvl+' — '+esc(c.why))}}).addTo(map);
+  setTimeout(()=>{map.invalidateSize();if(segLayer.getLayers().length&&MAPFOR!==cur){map.fitBounds(segLayer.getBounds(),{padding:[16,16]});MAPFOR=cur}},50);
 }
 load();setInterval(load,600000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&DATA&&Date.now()-DATA.t>60000)load()});
