@@ -181,7 +181,7 @@
   /* ---------- Town navigation ---------- */
   .townnav {
     flex: 0 0 auto; position: relative; z-index: 1090;
-    display: grid; grid-template-columns: minmax(0, 1fr) 30px repeat(3, minmax(0, 1fr)) auto; gap: 6px;   /* v6.1: + Sign in column (top row, right); v5.8: Region | CMA label | 3 towns, one row per CMA */
+    display: grid; grid-template-columns: minmax(0, 1fr) 30px repeat(3, minmax(0, 1fr)) auto; gap: 8px;   /* v6.1: + Sign in column (top row, right); v5.8: Region | CMA label | 3 towns, one row per CMA */
     padding: 0.45rem 1rem;
     background: rgba(6, 11, 20, 0.97);
     border-bottom: 1px solid var(--line);
@@ -213,10 +213,11 @@
   .townnav a#rgNavLink:hover { background: rgba(20, 224, 192, 0.2); box-shadow: var(--glow); }
   @media (max-width: 440px) { .townnav a#rgNavLink { letter-spacing: 0.03em; padding: 0 0.25rem; white-space: normal; text-align: center; line-height: 1.15; } }
   /* Sign in: always in the top row (right edge, spans both rows like Region); orange accent per Kent 2026-10-12 */
-  .townnav a#siNavLink { grid-column: 6; grid-row: 1 / span 2; padding: 0.35rem 0.6rem;
+  .townnav a#siNavLink { grid-column: 6; grid-row: 1; align-self: center; min-height: 40px; padding: 0.2rem 0.55rem; font-size: 0.85rem; white-space: nowrap;
     color: #1f0e02; border-color: #ff8a1f; background: linear-gradient(180deg, #ff9a3c, #ff8a1f); }
   .townnav a#siNavLink:hover { color: #000; border-color: #ffb366; }
-  @media (max-width: 440px) { .townnav a#siNavLink { padding: 0.3rem 0.35rem; white-space: normal; text-align: center; line-height: 1.15; max-width: 3.4rem; } }
+  @media (max-width: 440px) { .townnav a#siNavLink { padding: 0.2rem 0.4rem; font-size: 0.78rem; min-height: 40px; } }
+  @media (max-width: 440px) { .townnav { gap: 7px; padding: 0.45rem 0.6rem; } .townnav a[data-place]:not([data-place="region"]) { font-size: 0.8rem; padding: 0.3rem 0.25rem; letter-spacing: 0; white-space: normal; text-align: center; line-height: 1.1; overflow-wrap: anywhere; } }
   .townnav .cmalbl { display: flex; flex-direction: column; align-items: center; justify-content: center; font: 600 0.52rem/1.15 var(--mono);
     letter-spacing: 0.06em; color: var(--dim); text-align: center; }
   .townnav .cmalbl b { font-size: 0.7rem; color: var(--muted); letter-spacing: 0.02em; }
@@ -358,6 +359,9 @@
   .fcbar:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--cyan); }
   /* Events link (always shown since Oct 8 2026; the on/off switch was removed) */
   .fcbar.evlink { padding: 0 0.7rem; }
+  /* 7-day forecast: filled teal so it stands out (Kent 2026-10-21; same size) */
+  #fcMapLink { background: linear-gradient(180deg, #2ff0d2, #14e0c0); color: #04201b; border-color: #5ff5de; font-weight: 700; box-shadow: 0 0 16px rgba(20,224,192,0.55); }
+  #fcMapLink:hover { background: #5ff5de; color: #000; }
   .fclink.evlink { margin-left: 0.3rem; }
 
   /* Town snowfall forecast (Open-Meteo) */
@@ -600,7 +604,7 @@
     .side .panel { position: relative; inset: auto; width: auto; max-height: none; min-height: 0; overflow: visible; animation: none; flex: 0 0 auto; padding: 0.8rem 0.9rem; }
     .side .snowcard { order: -1; }
     .side .wx { margin-bottom: 0.7rem; padding-bottom: 0.65rem; border-bottom: 1px dashed var(--line); }
-    .fcbar:not(#camLink) { display: none; }   /* the 7-day link sits in the town card title at the top of the side column */
+    .fcbar:not(#camLink):not(#rgNavLink):not(#fcMapLink) { display: none; }   /* 2026-10-21: Road Genie + 7-day stay visible on desktop */   /* the 7-day link sits in the town card title at the top of the side column */
   }
   @media (min-width: 1280px) { :root { --side-w: 384px; } }
   /* v5.9 desktop only (not landscape phones): radar source, GeoMet, plows/roads and legend first in the side column,
