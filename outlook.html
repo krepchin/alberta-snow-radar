@@ -5,13 +5,13 @@
 <style>
 :root{--bg:#05080f;--card:#0d1626;--line:#1d2b44;--text:#e6eef8;--mute:#8aa0bd;--cyan:#14e0c0;--hi:#ff6b6b;--med:#ffb84d;--lo:#7fd1ff;--font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;--mono:ui-monospace,Menlo,monospace}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.4 var(--font);-webkit-text-size-adjust:100%}
-header{position:sticky;top:0;z-index:5;background:rgba(5,8,15,.95);border-bottom:1px solid var(--line);padding:calc(8px + env(safe-area-inset-top)) 14px 8px;display:flex;align-items:center;gap:10px}
-header a{color:var(--cyan);text-decoration:none;font:600 .75rem var(--mono);min-height:44px;display:inline-flex;align-items:center}
+header{position:sticky;top:0;z-index:5;background:rgba(5,8,15,.95);border-bottom:1px solid var(--line);padding:calc(8px + env(safe-area-inset-top)) 12px 8px;display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+header a{color:#fff;background:#16233a;border:2px solid var(--cyan);border-radius:10px;padding:0 12px;text-decoration:none;font:700 .9rem var(--font);min-height:44px;display:inline-flex;align-items:center;white-space:nowrap}header a.si{border-color:#ff8a1f;background:#ff8a1f;color:#1a0b00}
 h1{font-size:1.15rem;margin:0;flex:1}
 main{max-width:980px;margin:0 auto;padding:12px 12px calc(24px + env(safe-area-inset-bottom))}
-.upd{font:.72rem var(--mono);color:var(--mute);margin:0 0 10px}.upd button{background:none;border:1px solid var(--line);color:var(--cyan);border-radius:8px;padding:6px 10px;font:inherit;min-height:32px}
-.tabs{display:flex;gap:6px;margin-bottom:10px;overflow-x:auto}.tabs button{flex:1;min-height:44px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--text);font:600 .85rem var(--font)}
-.tabs button[aria-selected=true]{border-color:var(--cyan);color:var(--cyan)}
+.upd{font:.72rem var(--mono);color:var(--mute);margin:0 0 10px}.upd button{background:#13243b;border:2px solid var(--cyan);color:#fff;border-radius:10px;padding:8px 14px;font:700 .9rem var(--font);min-height:44px}
+.tabs{display:flex;gap:6px;margin-bottom:10px;overflow-x:auto}.tabs button{flex:1;min-width:0;min-height:48px;padding:6px 8px;border-radius:10px;border:2px solid #4a6488;background:#16233a;color:#fff;font:700 .95rem var(--font)}
+.tabs button[aria-selected=true]{border-color:var(--cyan);background:var(--cyan);color:#04121a}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:12px}
 .card h2{font-size:1rem;margin:0 0 8px}.card h3{font-size:.9rem;margin:10px 0 6px;color:var(--mute);text-transform:uppercase;letter-spacing:.05em}
 .conf{display:inline-block;padding:2px 8px;border-radius:999px;font:700 .7rem var(--mono);text-transform:uppercase}
@@ -34,7 +34,7 @@ td.n{text-align:right;white-space:nowrap;font-family:var(--mono)}
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script src="auth.js"></script><link rel="stylesheet" href="ticker.css"><script src="map-coop.js"></script><meta name="theme-color" content="#05080f" /><link rel="manifest" href="/manifest.webmanifest" /><link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" /><link rel="icon" type="image/svg+xml" href="/icons/icon.svg" /><link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" /><meta name="mobile-web-app-capable" content="yes" /><meta name="apple-mobile-web-app-capable" content="yes" /><meta name="apple-mobile-web-app-title" content="Alberta Weather" /><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" /><meta name="application-name" content="Alberta Weather" />
 </head><body>
 <div id="rtk" role="marquee" aria-label="Current 511 Alberta road events" title="Tap to pause"><span class="st">Loading road events…</span></div>
-<header><a href="index.html">‹ Map</a><h1>Outlook</h1><a href="public-cameras.html">Cameras ›</a><a href="login.html">Sign in ›</a></header>
+<header><a href="index.html">‹ Back to map</a><h1>Outlook</h1><a href="public-cameras.html">Cameras</a><a class="si" href="login.html">Sign in</a></header>
 <main>
 <p class="upd" id="upd">Loading…</p>
 <div class="tabs" role="tablist" id="tabs" style="flex-wrap:wrap"></div>
@@ -151,13 +151,13 @@ function render(){
   h+='<h3>Roads likely to need attention (72 h)</h3>'+(!DATA.segOk||!DATA.roads?NA:att.length?'<table><tr><th>Road</th><th>When</th><th>Why</th><th>Score</th></tr>'+att.map(s=>'<tr><td>'+esc(s.road)+'<div class="src">'+esc(s.location)+'</div></td><td>'+(s.first?esc(hl(s.first)):'now')+'</td><td>'+why(s,null)+'</td><td class="n">'+s.sc.toFixed(1)+'</td></tr>').join('')+'</table>':'<p class="note">No '+t.area+' segment shows forecast snow in the next 72 h, a non-bare condition, or snow history right now, so none is flagged.</p>');
   h+='</div></div>';
   $('#out').innerHTML=h;
-  $('#upd').innerHTML='Updated '+tfmt(DATA.t)+' · <button id="rf">Refresh</button>';
+  $('#upd').innerHTML='Updated '+tfmt(DATA.t)+' · <button id="rf">Refresh data</button>';
   $('#rf').onclick=load;
   document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{cur=b.dataset.id;history.replaceState(null,'','#'+cur);render()});
   drawMap();
 }
 function drawMap(){
-  $('#dayTabs').innerHTML=DAYS.map(d=>'<button aria-selected="'+(d==MDAY)+'" data-d="'+d+'">Day '+(d+1)+'</button>').join('');
+  $('#dayTabs').innerHTML=DAYS.map(d=>'<button aria-selected="'+(d==MDAY)+'" data-d="'+d+'">'+['Next 24 h','24–48 h','48–72 h'][d]+'</button>').join('');
   document.querySelectorAll('#dayTabs button').forEach(b=>b.onclick=()=>{MDAY=+b.dataset.d;drawMap()});
   $('#lg').innerHTML=[['#ef4444','Score 5 or more'],['#f97316','Score 2 to 5'],['#facc15','Score above 0, under 2'],['#22c55e','Score 0 (nothing flagged)'],['#94a3b8','No forecast data']].map(x=>'<div><i style="background:'+x[0]+'"></i>'+x[1]+'</div>').join('')+'<div class="src">'+dayLbl(MDAY)+'. Day 1 includes the current 511 condition; days 2–3 use forecast snow and history only.</div>';
   if(!window.L){$('#map').innerHTML='<p class="note" style="padding:10px">Map library did not load.</p>';return}

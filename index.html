@@ -1870,13 +1870,12 @@ function plowColor(owner) {
   const hit = PLOW_OWNER_COLORS.find(([re]) => re.test(owner || ''));
   return hit ? hit[1] : PLOW_OTHER_COLOR;
 }
-const ROAD_COLORS = [                    // matched against Primary Condition text, first hit wins
-  [/clos|impass/i, '#ef4444', 'Closed / impassable'],
-  [/ice|icy/i, '#d946ef', 'Icy'],
-  [/snow cover|snow-cover|covered|drift/i, '#f97316', 'Snow covered'],
-  [/partly|partial|pack|slush|snow/i, '#facc15', 'Partly covered / snow'],
-  [/wet|frost|slippery|section/i, '#38bdf8', 'Wet / slippery sections'],
-  [/bare|dry|good|normal|seasonal/i, '#22c55e', 'Bare / seasonal'],
+const ROAD_COLORS = [                    // Alberta 511 scheme; matched against Primary Condition text, first hit wins
+  [/clos|impass/i, '#ef4444', 'Snow / ice covered or closed'],
+  [/ptly|partly|partial|patch|section/i, '#facc15', 'Partly snow covered'],
+  [/snow cover|snow-cover|cover|cvd|ice|icy|drift/i, '#ef4444', 'Snow / ice covered'],
+  [/pack|slush|snw|snow|frost|slip/i, '#facc15', 'Partly covered / snow'],
+  [/bare|dry|wet|good|normal|seasonal/i, '#22c55e', 'Bare dry / bare wet'],
 ];
 const ROAD_OTHER = '#94a3b8';
 let plowLayer = null, roadLayer = null, plowsOn = true, roadsOn = false;
@@ -2042,7 +2041,7 @@ async function loadRoads() {
     if (roadsOn) roadLayer.addTo(radarMap);
     const seen = {};
     gj.features.forEach(f => { const c = (f.properties || {}).condition || 'Unknown'; seen[roadStyle(c)] = seen[roadStyle(c)] || c; });
-    $('roadKey').innerHTML = ROAD_COLORS.concat([[null, ROAD_OTHER, 'Other']]).filter(r => seen[r[1]])
+    $('roadKey').innerHTML = ROAD_COLORS.concat([[null, ROAD_OTHER, 'Other']]).filter((r, i, a) => seen[r[1]] && a.findIndex(x => x[1] === r[1]) === i)
       .map(r => '<span><i style="background:' + r[1] + '"></i>' + escHtml(r[2]) + '</span>').join('') || 'No reported segments in view';
     const rg = gj.generated ? new Date(gj.generated) : null;
     $('roadKey').insertAdjacentHTML('beforeend', '<span class="src">' + gj.features.length + ' segments · ' +

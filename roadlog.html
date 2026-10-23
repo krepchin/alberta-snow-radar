@@ -298,8 +298,8 @@ const TZ = 'America/Edmonton';
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 // same colours as the main map's road legend
-const ROAD_COLORS = [[/clos|impass/i, '#ef4444'], [/ice|icy/i, '#d946ef'], [/snow cover|snow-cover|covered|drift/i, '#f97316'],
-  [/partly|partial|pack|slush|snow/i, '#facc15'], [/wet|frost|slippery|section/i, '#38bdf8'], [/bare|dry|good|normal|seasonal/i, '#22c55e']];
+const ROAD_COLORS = [[/clos|impass/i, '#ef4444'], [/ptly|partly|partial|patch|section/i, '#facc15'], [/snow cover|snow-cover|cover|cvd|ice|icy|drift/i, '#ef4444'],
+  [/pack|slush|snw|snow|frost|slip/i, '#facc15'], [/bare|dry|wet|good|normal|seasonal/i, '#22c55e']];
 const condColor = c => { for (const [re, col] of ROAD_COLORS) if (re.test(c || '')) return col; return '#94a3b8'; };
 const isWinter = c => !!c && !/^(bare|no report|closed)/i.test(String(c).trim());
 const isSnowCovered = c => /snow cover|snow-cover/i.test(c || '');
