@@ -65,6 +65,10 @@
     background: linear-gradient(180deg, rgba(10, 17, 29, 0.98), rgba(6, 10, 18, 0.96));
     border-bottom: 1px solid var(--line);
   }
+  /* Oct 23 2026: header buttons wrap instead of overlapping the title on phones */
+  .hdr { flex-wrap: wrap; }
+  .hdr-nav { display: flex; flex-wrap: wrap; gap: .4rem; flex: 0 1 auto; justify-content: flex-end; }
+  @media (max-width: 440px) { .hdr-nav { flex: 1 1 100%; justify-content: flex-start; } }
   .brand { display: flex; align-items: center; gap: 0.7rem; min-width: 0; }
   .brand > div { min-width: 0; }
   .scope {
@@ -265,7 +269,7 @@
       <p class="sub">511 road condition updates · daily</p>
     </div>
   </div>
-  <div style="display:flex;gap:.4rem;flex:0 0 auto"><a class="back" data-home href="landing-gov.html" title="Back to your home page">‹ Home</a>
+  <div class="hdr-nav"><a class="back" data-home href="landing-gov.html" title="Back to your home page">‹ Home</a>
   <a class="back" data-signout href="login.html">Sign out</a>
   <a class="back" href="events.html">Events</a>
   <a class="back" href="./">
