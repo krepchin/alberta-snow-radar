@@ -125,6 +125,26 @@ async function getWeather() {
   });
   return out;
 }
+/* Radar snow check (Environment Canada MSC GeoMet, layer RADAR_1KM_RSNO, latest 6-min composite).
+ * RSNO is ECCC's own radar snowfall-rate product: they convert reflectivity to a snow rate in cm/h, so we use
+ * that value directly (no Z-S conversion of our own). We read the 1 km pixel at each town.
+ * Estimated accumulation (only shown when the Open-Meteo model has 0 for that town):
+ *   radar_acc_cm += rate_cm_per_h * (minutes since previous check, capped at 15) / 60
+ * It is labelled "est." wherever it is shown. */
+async function getRadar() {
+  const out = {};
+  await Promise.all(TOWNS.map(async t => {
+    const d = 0.01, u = 'https://geo.weather.gc.ca/geomet?' + new URLSearchParams({ SERVICE: 'WMS', VERSION: '1.3.0', REQUEST: 'GetFeatureInfo',
+      LAYERS: 'RADAR_1KM_RSNO', QUERY_LAYERS: 'RADAR_1KM_RSNO', CRS: 'EPSG:4326', BBOX: [t.lat - d, t.lon - d, t.lat + d, t.lon + d].join(','),
+      WIDTH: '3', HEIGHT: '3', I: '1', J: '1', INFO_FORMAT: 'application/json' });
+    try {
+      const j = await getJson(u, 8000);
+      const p = j && j.features && j.features[0] && j.features[0].properties;
+      out[t.id] = p ? { rr: num(p.value), rt: p.time ? Date.parse(p.time) : null } : null;
+    } catch (e) { out[t.id] = null; }
+  }));
+  return out;
+}
 const num = v => (typeof v === 'number' && isFinite(v) ? v : null);
 async function getRoads(env) {
   const gj = await relayJson(env, '/roads', 12000);
@@ -169,11 +189,13 @@ async function getPlows(env) {
 async function runCheck(env, opts = {}) {
   const now = Date.now();
   const errors = {};
-  const [wx, segs, plowsRaw] = await Promise.all([
+  const [wx, segs, plowsRaw, radar] = await Promise.all([
     getWeather().catch(e => { errors.weather = safeMsg(e); return null; }),
     getRoads(env).catch(e => { errors.roads = safeMsg(e); return null; }),
-    getPlows(env).catch(e => { errors.plows = safeMsg(e); return null; })
+    getPlows(env).catch(e => { errors.plows = safeMsg(e); return null; }),
+    getRadar().catch(e => { errors.radar = safeMsg(e); return null; })
   ]);
+  if (wx && radar) for (const t of TOWNS) if (wx[t.id] && radar[t.id]) { wx[t.id].rr = radar[t.id].rr; wx[t.id].rt = radar[t.id].rt; }
   // trucks are kept only near CMA 517/518 roads; without road geometry the coverage is unknown, so no trucks are recorded this check
   let plows = plowsRaw;
   if (plows) {
@@ -188,8 +210,8 @@ async function runCheck(env, opts = {}) {
   let emconMovedAt = st.emcon_moved ? st.emcon_moved.v : null;
 
   // ----- derived signals -----
-  const snowNow = wx ? TOWNS.filter(t => (wx[t.id].s15 || 0) > 0).map(t => t.name) : null;
-  const snowRecent2h = wx ? TOWNS.some(t => (wx[t.id].s15 || 0) > 0 || wx[t.id].hours.some(([ht, v]) => ht > now - CLOSE_SNOW_MS && ht <= now + 5 * MIN && (v || 0) > 0)) : null;
+  const snowNow = wx ? TOWNS.filter(t => (wx[t.id].s15 || 0) > 0 || (wx[t.id].rr || 0) > 0).map(t => t.name) : null;
+  const snowRecent2h = wx ? TOWNS.some(t => (wx[t.id].s15 || 0) > 0 || (wx[t.id].rr || 0) > 0 || wx[t.id].hours.some(([ht, v]) => ht > now - CLOSE_SNOW_MS && ht <= now + 5 * MIN && (v || 0) > 0)) : null;
   const snowNext12h = wx ? TOWNS.some(t => wx[t.id].hours.some(([ht, v]) => ht > now && (v || 0) > 0)) : null;
   const cmaNonBare = segs ? Object.entries(segs).filter(([, s]) => CMA517.includes(s.a) && isWinter(s.c)) : null;
   const cma518NonBare = segs ? Object.entries(segs).filter(([, s]) => CMA518.includes(s.a) && isWinter(s.c)) : null;
@@ -209,7 +231,7 @@ async function runCheck(env, opts = {}) {
     }
   }
   const reasons = [];
-  if (snowNow && snowNow.length) reasons.push('Open-Meteo snowfall now at ' + snowNow.join(', '));
+  if (snowNow && snowNow.length) reasons.push('Snowfall now (Open-Meteo or EC radar) at ' + snowNow.join(', '));
   if (cmaNonBare && cmaNonBare.length) reasons.push(cmaNonBare.length + ' CMA 517 segment(s) not bare: ' + [...new Set(cmaNonBare.map(([, s]) => s.c))].join(', '));
   if (cma518NonBare && cma518NonBare.length) reasons.push(cma518NonBare.length + ' CMA 518 segment(s) not bare: ' + [...new Set(cma518NonBare.map(([, s]) => s.c))].join(', '));
   if (emconMoving && snowNext12h) reasons.push('Emcon truck(s) moving with snow in the next 12 h forecast');
@@ -335,8 +357,13 @@ function snapshotStatements(db, ev, now, ctx) {
     if (!d) { w[t.id] = null; continue; }
     const acc = wxAcc[t.id] || (wxAcc[t.id] = {});
     for (const [ht, v] of d.hours) if (ht > ev.started - 60 * MIN && ht <= now && v != null) acc[ht] = v;   // hour ending at ht
-    const accum = Object.entries(acc).filter(([ht]) => Number(ht) > ev.started).reduce((s, [, v]) => s + v, 0);
-    w[t.id] = { rate: d.s15 == null ? null : round(d.s15 * 4, 2), s15: d.s15, acc: round(accum, 2), temp: d.temp, wind: d.wind, gust: d.gust, vis: d.vis, code: d.code, mt: d.t };
+    const accum = Object.entries(acc).filter(([ht]) => ht !== '_radar' && Number(ht) > ev.started).reduce((s, [, v]) => s + v, 0);
+    // radar estimate accumulator (see getRadar for the formula)
+    const R = wxAcc._radar || (wxAcc._radar = {}); const ra = R[t.id] || (R[t.id] = { acc: 0, last: null });
+    if (d.rr != null && d.rr > 0) ra.acc += d.rr * (ra.last ? Math.min(now - ra.last, 15 * MIN) : 5 * MIN) / (60 * MIN);   // first check counts as 5 min
+    ra.last = now;
+    const snowing = (d.s15 || 0) > 0 || (d.rr || 0) > 0;
+    w[t.id] = { rr: d.rr ?? null, racc: round(ra.acc, 2), snowing, rate: d.s15 == null ? null : round(d.s15 * 4, 2), s15: d.s15, acc: round(accum, 2), temp: d.temp, wind: d.wind, gust: d.gust, vis: d.vis, code: d.code, mt: d.t };
   }
 
   // road transitions (CMA 517 + CMA 518 only)
@@ -402,7 +429,7 @@ function snapshotStatements(db, ev, now, ctx) {
   for (const t of TOWNS) {
     const x = w[t.id]; if (!x) continue;
     const s = summary.towns[t.id] || (summary.towns[t.id] = { name: t.name, acc: 0, max_rate: 0, min_temp: null, max_gust: null, min_vis: null });
-    s.acc = x.acc; s.max_rate = Math.max(s.max_rate, x.rate || 0);
+    s.est = !(x.acc > 0) && x.racc > 0; s.acc = s.est ? x.racc : x.acc; s.max_rate = Math.max(s.max_rate, x.rate || 0);
     if (x.temp != null) s.min_temp = s.min_temp == null ? x.temp : Math.min(s.min_temp, x.temp);
     if (x.gust != null) s.max_gust = s.max_gust == null ? x.gust : Math.max(s.max_gust, x.gust);
     if (x.vis != null) s.min_vis = s.min_vis == null ? x.vis : Math.min(s.min_vis, x.vis);

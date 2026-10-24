@@ -365,7 +365,7 @@ function statsHtml(e) {
   const th = s.truck_hours || {}, dep = s.trucks_deployed || {}, mo = s.max_out || {};
   return `<div class="stats">
     <div class="stat"><span class="k">Duration</span><span class="v">${esc(fmtDur(end - e.started))}</span><span class="s">${esc((s.snapshots || 0) + ' snapshots')}</span></div>
-    <div class="stat snow"><span class="k">Snowfall</span><span class="v">${m ? n1(m.acc) + '<small>cm</small>' : '—'}</span><span class="s">${m ? esc('max · ' + m.name) : 'no weather data'}</span></div>
+    <div class="stat snow"><span class="k">Snowfall</span><span class="v">${m ? (m.est ? '~' : '') + n1(m.acc) + '<small>cm' + (m.est ? ' est.' : '') + '</small>' : '—'}</span><span class="s">${m ? esc('max · ' + m.name) : 'no weather data'}</span></div>
     <div class="stat"><span class="k">Road→Emcon</span><span class="v">${s.lag_min == null ? '—' : esc(fmtDur(s.lag_min * 60000))}</span><span class="s">${s.first_nonbare_t ? 'first snowy road ' + esc(fmtT(s.first_nonbare_t)) : 'no snowy CMA 517 road'}</span></div>
     <div class="stat emcon"><span class="k">Emcon out</span><span class="v">${dep.emcon || 0}<small>trucks</small></span><span class="s">${esc('max ' + (mo.emcon || 0) + ' at once · ' + n1(th.emcon || 0) + ' truck-h')}</span></div>
   </div>
@@ -510,9 +510,15 @@ function eventParts(d) {
   const wxNowFor = list => !list.length ? '<p class="muted" style="margin:0;font:500 .74rem/1.5 var(--mono)">No weather recorded for these towns in this event (CMA 518 weather points were added Oct 8, 2026, after this event).</p>'
     : last && last.w ? list.map(tw => {
     const w = last.w[tw.id];
-    return `<div class="stat"><span class="k">${esc(tw.name)}</span>${w ? `<span class="v">${n1(w.temp)}<small>°C</small> · ${n1(w.rate)}<small>cm/h</small></span>
+    // Status: snowing if the model (15-min snowfall) or EC radar (RADAR_1KM_RSNO) shows snow. Model amounts are used when > 0;
+    // otherwise the radar estimate (rate × time, computed in the recorder) is shown and marked "est.".
+    const radarOnlyRate = w && !(w.rate > 0) && w.rr > 0, radarOnlyAcc = w && !(w.acc > 0) && w.racc > 0;
+    const rateTxt = w ? (radarOnlyRate ? '~' + n1(w.rr) + '<small>cm/h est.</small>' : n1(w.rate) + '<small>cm/h</small>') : '';
+    const accTxt = w ? (radarOnlyAcc ? 'snow since start ~' + n1(w.racc) + ' cm est. (radar)' : 'snow since start ' + n1(w.acc) + ' cm') : '';
+    const snowing = w && (w.snowing || w.rate > 0 || w.rr > 0);
+    return `<div class="stat"><span class="k">${esc(tw.name)}${w ? (snowing ? ' · <b style="color:#7dd3fc">SNOWING</b>' + (radarOnlyRate ? ' <small>(radar)</small>' : '') : ' · not snowing') : ''}</span>${w ? `<span class="v">${n1(w.temp)}<small>°C</small> · ${rateTxt}</span>
       <span class="s">${esc('wind ' + (w.wind ?? '—') + ' g ' + (w.gust ?? '—') + ' km/h · vis ' + (w.vis == null ? '—' : (w.vis / 1000).toFixed(1) + ' km'))}</span>
-      <span class="s">${esc('snow since start ' + n1(w.acc) + ' cm')}</span>` : '<span class="v na">no data</span>'}</div>`;
+      <span class="s">${esc(accTxt)}</span>` : '<span class="v na">no data</span>'}</div>`;
   }).join('') : '<p class="muted">No snapshot yet.</p>';
 
   // roads
